@@ -1,3 +1,4 @@
+import { AutoRefresh } from "@/components/auto-refresh";
 import { getDb } from "@/lib/db";
 import { detectEngines, resolveEngine } from "@/lib/engines";
 import { formatMoney } from "@/lib/format";
@@ -21,6 +22,7 @@ export default async function Dashboard({ searchParams }: PageProps<"/">) {
 
   const header = (
     <header className="border-b border-zinc-200 dark:border-zinc-800">
+      <AutoRefresh />
       <div className="mx-auto flex h-14 max-w-5xl items-center justify-between px-6">
         <span className="text-lg font-semibold tracking-tight">finzo</span>
         <div className="flex items-center gap-4">
