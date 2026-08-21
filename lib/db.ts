@@ -32,13 +32,13 @@ export interface Balance {
 
 export const toMinor = (n: number) => Math.round(n * 100);
 
-const txnHash = (t: { date: string; description: string; amount: number; direction: string }) =>
-  createHash("sha256").update(`${t.date}|${t.description}|${t.amount}|${t.direction}`).digest("hex");
+const txnHash = (key: string) => createHash("sha256").update(key).digest("hex");
 
 export function createDb(file: string) {
   if (file !== ":memory:") mkdirSync(path.dirname(file), { recursive: true });
   const db = new Database(file);
   db.pragma("journal_mode = WAL");
+  db.pragma("foreign_keys = ON"); // ON DELETE CASCADE needs this in SQLite
   db.exec(`
     CREATE TABLE IF NOT EXISTS statements (
       id INTEGER PRIMARY KEY,
@@ -94,9 +94,15 @@ export function createDb(file: string) {
         );
         const statementId = Number(res.lastInsertRowid);
         let inserted = 0;
+        // Legit same-day identical repeats (two identical orders) get an occurrence
+        // number, so dedup only bites across overlapping statement uploads.
+        const seen = new Map<string, number>();
         for (const t of extraction.transactions) {
           const amount = toMinor(t.amount);
-          const r = insertTxnStmt.run(statementId, t.date, t.description, amount, t.direction, t.category, txnHash({ ...t, amount }));
+          const key = `${t.date}|${t.description}|${amount}|${t.direction}`;
+          const n = (seen.get(key) ?? 0) + 1;
+          seen.set(key, n);
+          const r = insertTxnStmt.run(statementId, t.date, t.description, amount, t.direction, t.category, txnHash(`${key}|${n}`));
           inserted += r.changes;
         }
         return { statementId, inserted, skipped: extraction.transactions.length - inserted };

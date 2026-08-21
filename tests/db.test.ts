@@ -23,6 +23,17 @@ describe("store", () => {
     expect(db.transactions("2026-07")).toHaveLength(FIXTURE_EXTRACTION.transactions.length);
   });
 
+  it("keeps legitimate identical same-day transactions within one statement", () => {
+    const db = createDb(":memory:");
+    const extraction = structuredClone(FIXTURE_EXTRACTION);
+    extraction.transactions.push({ ...extraction.transactions[5] }, { ...extraction.transactions[5] });
+    const res = db.insertStatement(extraction, "july.pdf", "hash-1");
+    expect(res.inserted).toBe(extraction.transactions.length);
+    // ...but a second overlapping statement still can't double-count them
+    const again = db.insertStatement(extraction, "july-again.pdf", "hash-2");
+    expect(again.inserted).toBe(0);
+  });
+
   it("rejects re-uploading the same file via hasStatement", () => {
     const db = createDb(":memory:");
     insertFixture(db);
