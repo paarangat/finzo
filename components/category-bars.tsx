@@ -1,3 +1,4 @@
+import { categoryColor } from "@/lib/colors";
 import { formatMoney } from "@/lib/format";
 import type { Summary } from "@/lib/db";
 
@@ -13,8 +14,8 @@ export function CategoryBars({ data, currency }: { data: Summary["byCategory"]; 
           <span className="truncate text-zinc-600 dark:text-zinc-400">{category}</span>
           <div className="h-2">
             <div
-              className="h-full rounded-r-[4px] bg-accent"
-              style={{ width: `${Math.max((total / max) * 100, 1)}%` }}
+              className="h-full rounded-r-[4px]"
+              style={{ width: `${Math.max((total / max) * 100, 1)}%`, background: categoryColor(category) }}
             />
           </div>
           <span className="font-mono text-xs tabular-nums text-zinc-500">{formatMoney(total, currency)}</span>

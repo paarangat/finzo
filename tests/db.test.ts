@@ -57,6 +57,7 @@ describe("store", () => {
     expect(s.byCategory.map((c) => c.category)).not.toContain("Transfers");
     expect(s.currency).toBe("USD");
     expect(s.byDay.reduce((acc, d) => acc + d.total, 0)).toBe(expectedSpent);
+    expect(db.monthlySpend()).toEqual([{ month: "2026-07", total: expectedSpent }]);
   });
 
   it("re-categorizing updates summary and marks the override", () => {

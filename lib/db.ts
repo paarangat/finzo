@@ -110,6 +110,17 @@ export function createDb(file: string) {
       return run();
     },
 
+    monthlySpend(): { month: string; total: number }[] {
+      const nonSpend = NON_SPEND_CATEGORIES.map(() => "?").join(",");
+      return db
+        .prepare(
+          `SELECT substr(date,1,7) AS month, SUM(amount) AS total FROM transactions
+           WHERE direction = 'debit' AND category NOT IN (${nonSpend})
+           GROUP BY month ORDER BY month`
+        )
+        .all(...NON_SPEND_CATEGORIES) as { month: string; total: number }[];
+    },
+
     months(): string[] {
       return (db.prepare("SELECT DISTINCT substr(date, 1, 7) AS m FROM transactions ORDER BY m DESC").all() as { m: string }[]).map((r) => r.m);
     },

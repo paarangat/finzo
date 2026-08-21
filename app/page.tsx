@@ -5,6 +5,8 @@ import { formatMoney } from "@/lib/format";
 import { BalanceStat } from "@/components/balance-stat";
 import { CategoryBars } from "@/components/category-bars";
 import { DailyChart } from "@/components/daily-chart";
+import { DonutChart } from "@/components/donut-chart";
+import { MonthlyTrend } from "@/components/monthly-trend";
 import { EngineSelect } from "@/components/engine-select";
 import { MonthNav } from "@/components/month-nav";
 import { TransactionsTable } from "@/components/transactions-table";
@@ -89,12 +91,24 @@ export default async function Dashboard({ searchParams }: PageProps<"/">) {
           </div>
         </section>
 
-        <section className="grid gap-10 border-t border-zinc-200 pt-8 lg:grid-cols-5 dark:border-zinc-800">
-          <div className="lg:col-span-3">
-            <h2 className="mb-4 text-sm font-medium">Where it went</h2>
-            <CategoryBars data={summary.byCategory} currency={summary.currency} />
+        <section className="border-t border-zinc-200 pt-8 dark:border-zinc-800">
+          <h2 className="mb-6 text-sm font-medium">Where it went</h2>
+          <div className="grid items-center gap-10 lg:grid-cols-5">
+            <div className="lg:col-span-2">
+              <DonutChart data={summary.byCategory} spent={summary.spent} currency={summary.currency} />
+            </div>
+            <div className="lg:col-span-3">
+              <CategoryBars data={summary.byCategory} currency={summary.currency} />
+            </div>
           </div>
-          <div className="lg:col-span-2">
+        </section>
+
+        <section className="grid gap-10 border-t border-zinc-200 pt-8 lg:grid-cols-2 dark:border-zinc-800">
+          <div>
+            <h2 className="mb-4 text-sm font-medium">Monthly spending</h2>
+            <MonthlyTrend data={db.monthlySpend()} current={month} currency={summary.currency} />
+          </div>
+          <div>
             <h2 className="mb-4 text-sm font-medium">Daily spend</h2>
             <DailyChart month={month} data={summary.byDay} currency={summary.currency} />
           </div>
