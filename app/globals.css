@@ -1,6 +1,7 @@
 @import "tailwindcss";
 
 :root {
+  color-scheme: light dark; /* enables light-dark() and native dark form controls */
   --background: #fafafa;
   --foreground: #18181b;
   --accent: #047857; /* emerald-700: 4.5:1+ on the light surface */
