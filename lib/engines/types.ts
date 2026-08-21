@@ -1,7 +1,8 @@
 import type { Extraction } from "../schema";
 
-// Real multi-page statements routinely take several minutes of CLI read+extract.
-export const EXTRACTION_TIMEOUT_MS = 10 * 60_000;
+// Real multi-page statements routinely take several minutes of CLI read+extract
+// (a 5-month, ~680-transaction HDFC PDF measured ~9 minutes).
+export const EXTRACTION_TIMEOUT_MS = 15 * 60_000;
 
 /** Thrown when the CLI hits the timeout; retrying would just time out again. */
 export class TimeoutError extends Error {}
