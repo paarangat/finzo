@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { parseModelJson, validateExtraction, type Extraction } from "../schema";
 import { buildExtractionPrompt } from "./prompt";
+import { EXTRACTION_TIMEOUT_MS, TimeoutError } from "./types";
 import type { Engine } from "./types";
 
 const run = promisify(execFile);
@@ -16,7 +17,7 @@ export const codexEngine: Engine = {
     const outDir = await mkdtemp(path.join(tmpdir(), "finzo-codex-"));
     const outFile = path.join(outDir, "last-message.txt");
     try {
-      await run(
+      const pending = run(
         "codex",
         [
           "exec",
@@ -28,8 +29,16 @@ export const codexEngine: Engine = {
           outFile,
           buildExtractionPrompt(filePath, feedback),
         ],
-        { timeout: 180_000, maxBuffer: 32 * 1024 * 1024 }
+        { timeout: EXTRACTION_TIMEOUT_MS, maxBuffer: 32 * 1024 * 1024 }
       );
+      pending.child.stdin?.end();
+      try {
+        await pending;
+      } catch (err) {
+        const e = err as { killed?: boolean; stderr?: string; message?: string };
+        if (e.killed) throw new TimeoutError(`codex CLI timed out after ${EXTRACTION_TIMEOUT_MS / 60000} minutes.`);
+        throw new Error(`codex CLI failed: ${(e.stderr || e.message || "").slice(-800)}`);
+      }
       const text = await readFile(outFile, "utf8");
       return validateExtraction(parseModelJson(text));
     } finally {
