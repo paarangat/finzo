@@ -1,0 +1,185 @@
+import Database from "better-sqlite3";
+import { createHash } from "node:crypto";
+import { mkdirSync } from "node:fs";
+import path from "node:path";
+import type { Extraction } from "./schema";
+import { NON_SPEND_CATEGORIES, type Category } from "./categories";
+
+export interface TransactionRow {
+  id: number;
+  statement_id: number;
+  date: string;
+  description: string;
+  amount: number; // minor units, always positive; direction says which way
+  direction: "debit" | "credit";
+  category: Category;
+  category_overridden: 0 | 1;
+}
+
+export interface Summary {
+  spent: number;
+  income: number;
+  byCategory: { category: Category; total: number }[];
+  byDay: { date: string; total: number }[];
+  currency: string;
+}
+
+export interface Balance {
+  amount: number;
+  asOf: string;
+  source: "manual" | "statement";
+}
+
+export const toMinor = (n: number) => Math.round(n * 100);
+
+const txnHash = (t: { date: string; description: string; amount: number; direction: string }) =>
+  createHash("sha256").update(`${t.date}|${t.description}|${t.amount}|${t.direction}`).digest("hex");
+
+export function createDb(file: string) {
+  if (file !== ":memory:") mkdirSync(path.dirname(file), { recursive: true });
+  const db = new Database(file);
+  db.pragma("journal_mode = WAL");
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS statements (
+      id INTEGER PRIMARY KEY,
+      filename TEXT NOT NULL,
+      file_hash TEXT NOT NULL UNIQUE,
+      bank_name TEXT,
+      currency TEXT NOT NULL,
+      period_start TEXT NOT NULL,
+      period_end TEXT NOT NULL,
+      closing_balance INTEGER,
+      uploaded_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE TABLE IF NOT EXISTS transactions (
+      id INTEGER PRIMARY KEY,
+      statement_id INTEGER NOT NULL REFERENCES statements(id) ON DELETE CASCADE,
+      date TEXT NOT NULL,
+      description TEXT NOT NULL,
+      amount INTEGER NOT NULL,
+      direction TEXT NOT NULL CHECK (direction IN ('debit','credit')),
+      category TEXT NOT NULL,
+      category_overridden INTEGER NOT NULL DEFAULT 0,
+      txn_hash TEXT NOT NULL UNIQUE
+    );
+    CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+  `);
+
+  const insertStatementStmt = db.prepare(
+    `INSERT INTO statements (filename, file_hash, bank_name, currency, period_start, period_end, closing_balance)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`
+  );
+  const insertTxnStmt = db.prepare(
+    `INSERT OR IGNORE INTO transactions (statement_id, date, description, amount, direction, category, txn_hash)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`
+  );
+
+  const store = {
+    raw: db,
+
+    hasStatement(fileHash: string): boolean {
+      return !!db.prepare("SELECT 1 FROM statements WHERE file_hash = ?").get(fileHash);
+    },
+
+    insertStatement(extraction: Extraction, filename: string, fileHash: string): { statementId: number; inserted: number; skipped: number } {
+      const run = db.transaction(() => {
+        const res = insertStatementStmt.run(
+          filename,
+          fileHash,
+          extraction.bank_name,
+          extraction.currency.toUpperCase(),
+          extraction.period_start,
+          extraction.period_end,
+          extraction.closing_balance === null ? null : toMinor(extraction.closing_balance)
+        );
+        const statementId = Number(res.lastInsertRowid);
+        let inserted = 0;
+        for (const t of extraction.transactions) {
+          const amount = toMinor(t.amount);
+          const r = insertTxnStmt.run(statementId, t.date, t.description, amount, t.direction, t.category, txnHash({ ...t, amount }));
+          inserted += r.changes;
+        }
+        return { statementId, inserted, skipped: extraction.transactions.length - inserted };
+      });
+      return run();
+    },
+
+    months(): string[] {
+      return (db.prepare("SELECT DISTINCT substr(date, 1, 7) AS m FROM transactions ORDER BY m DESC").all() as { m: string }[]).map((r) => r.m);
+    },
+
+    transactions(month: string): TransactionRow[] {
+      return db
+        .prepare("SELECT * FROM transactions WHERE substr(date, 1, 7) = ? ORDER BY date DESC, id DESC")
+        .all(month) as TransactionRow[];
+    },
+
+    summary(month: string): Summary {
+      const nonSpend = NON_SPEND_CATEGORIES.map(() => "?").join(",");
+      const spent = (db
+        .prepare(`SELECT COALESCE(SUM(amount), 0) AS v FROM transactions WHERE substr(date,1,7) = ? AND direction = 'debit' AND category NOT IN (${nonSpend})`)
+        .get(month, ...NON_SPEND_CATEGORIES) as { v: number }).v;
+      const income = (db
+        .prepare("SELECT COALESCE(SUM(amount), 0) AS v FROM transactions WHERE substr(date,1,7) = ? AND direction = 'credit'")
+        .get(month) as { v: number }).v;
+      const byCategory = db
+        .prepare(
+          `SELECT category, SUM(amount) AS total FROM transactions
+           WHERE substr(date,1,7) = ? AND direction = 'debit' AND category NOT IN (${nonSpend})
+           GROUP BY category ORDER BY total DESC`
+        )
+        .all(month, ...NON_SPEND_CATEGORIES) as Summary["byCategory"];
+      const byDay = db
+        .prepare(
+          `SELECT date, SUM(amount) AS total FROM transactions
+           WHERE substr(date,1,7) = ? AND direction = 'debit' AND category NOT IN (${nonSpend})
+           GROUP BY date ORDER BY date`
+        )
+        .all(month, ...NON_SPEND_CATEGORIES) as Summary["byDay"];
+      const currency =
+        (db.prepare("SELECT currency FROM statements ORDER BY uploaded_at DESC, id DESC LIMIT 1").get() as { currency: string } | undefined)
+          ?.currency ?? "USD";
+      return { spent, income, byCategory, byDay, currency };
+    },
+
+    setCategory(id: number, category: Category): void {
+      db.prepare("UPDATE transactions SET category = ?, category_overridden = 1 WHERE id = ?").run(category, id);
+    },
+
+    getSetting(key: string): string | null {
+      return (db.prepare("SELECT value FROM settings WHERE key = ?").get(key) as { value: string } | undefined)?.value ?? null;
+    },
+
+    setSetting(key: string, value: string): void {
+      db.prepare("INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(key, value);
+    },
+
+    setManualBalance(amountMinor: number): void {
+      store.setSetting("manual_balance", String(amountMinor));
+      store.setSetting("manual_balance_at", new Date().toISOString().slice(0, 10));
+    },
+
+    // "Whichever is fresher": manual entry wins if made on/after the latest statement's period end.
+    balance(): Balance | null {
+      const manual = store.getSetting("manual_balance");
+      const manualAt = store.getSetting("manual_balance_at");
+      const latest = db
+        .prepare("SELECT closing_balance, period_end FROM statements WHERE closing_balance IS NOT NULL ORDER BY period_end DESC LIMIT 1")
+        .get() as { closing_balance: number; period_end: string } | undefined;
+      if (manual !== null && manualAt !== null && (!latest || manualAt >= latest.period_end)) {
+        return { amount: Number(manual), asOf: manualAt, source: "manual" };
+      }
+      if (latest) return { amount: latest.closing_balance, asOf: latest.period_end, source: "statement" };
+      return null;
+    },
+  };
+  return store;
+}
+
+export type Store = ReturnType<typeof createDb>;
+
+let singleton: Store | null = null;
+export function getDb(): Store {
+  singleton ??= createDb(path.join(process.cwd(), "data", "finzo.db"));
+  return singleton;
+}
