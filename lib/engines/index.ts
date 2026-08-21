@@ -4,7 +4,7 @@ import type { Extraction } from "../schema";
 import { claudeEngine } from "./claude";
 import { codexEngine } from "./codex";
 import { fixtureEngine } from "./fixture";
-import type { Engine, EngineId } from "./types";
+import { TimeoutError, type Engine, type EngineId } from "./types";
 
 const run = promisify(execFile);
 
@@ -41,6 +41,7 @@ export async function extractWithRetry(engine: Engine, filePath: string): Promis
   try {
     return await engine.extract(filePath);
   } catch (err) {
+    if (err instanceof TimeoutError) throw err; // retrying a timeout just times out again
     return engine.extract(filePath, err instanceof Error ? err.message : String(err));
   }
 }

@@ -79,7 +79,7 @@ export function Uploader({ variant, engineLabel }: { variant: "button" | "dropzo
         <>
           <div className="size-8 animate-pulse rounded-lg bg-accent/20" />
           <p className="text-sm text-zinc-600 dark:text-zinc-400">
-            {engineLabel} is reading your statement. This usually takes 30 to 90 seconds.
+            {engineLabel} is reading your statement. This can take a few minutes for long statements.
           </p>
         </>
       ) : (
