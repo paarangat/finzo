@@ -84,7 +84,7 @@ export default async function Dashboard({ searchParams }: PageProps<"/">) {
               <DonutChart data={summary.byCategory} spent={summary.spent} currency={summary.currency} />
             </div>
             <div className="lg:col-span-3">
-              <CategoryBars data={summary.byCategory} currency={summary.currency} />
+              <CategoryBars data={summary.byCategory} budgets={db.budgets(month)} currency={summary.currency} />
             </div>
           </div>
         </section>

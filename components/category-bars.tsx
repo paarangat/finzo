@@ -1,26 +1,81 @@
+"use client";
+
+import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { categoryColor } from "@/lib/colors";
 import { formatMoney } from "@/lib/format";
-import type { Summary } from "@/lib/db";
+import type { Budget, Summary } from "@/lib/db";
 
-export function CategoryBars({ data, currency }: { data: Summary["byCategory"]; currency: string }) {
-  if (data.length === 0) {
+export function CategoryBars({ data, budgets, currency }: { data: Summary["byCategory"]; budgets: Budget[]; currency: string }) {
+  const router = useRouter();
+  const [editing, setEditing] = useState<string | null>(null);
+  const [value, setValue] = useState("");
+
+  const limits = new Map(budgets.map((b) => [b.category, b.limit]));
+  // Budgeted categories with no spend this month still get a (0%) row.
+  const rows = [...data, ...budgets.filter((b) => !data.some((d) => d.category === b.category)).map((b) => ({ category: b.category, total: 0 }))];
+  if (rows.length === 0) {
     return <p className="py-8 text-sm text-zinc-500">No spending recorded this month.</p>;
   }
-  const max = data[0].total;
+  const max = Math.max(...data.map((d) => d.total), 1);
+
+  async function save(category: string) {
+    const amount = value.trim() === "" ? null : Number(value);
+    if (amount !== null && !(amount > 0)) return setEditing(null);
+    await fetch("/api/budgets", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ category, amount }),
+    });
+    setEditing(null);
+    router.refresh();
+  }
+
   return (
     <ul className="space-y-3">
-      {data.map(({ category, total }) => (
-        <li key={category} className="grid grid-cols-[8rem_1fr_auto] items-center gap-3 text-sm">
-          <span className="truncate text-zinc-600 dark:text-zinc-400">{category}</span>
-          <div className="h-2">
-            <div
-              className="h-full rounded-r-[4px]"
-              style={{ width: `${Math.max((total / max) * 100, 1)}%`, background: categoryColor(category) }}
-            />
-          </div>
-          <span className="font-mono text-xs tabular-nums text-zinc-500">{formatMoney(total, currency)}</span>
-        </li>
-      ))}
+      {rows.map(({ category, total }) => {
+        const limit = limits.get(category);
+        const ratio = limit ? total / limit : total / max;
+        const color = !limit ? categoryColor(category) : ratio >= 1 ? "#dc2626" : ratio >= 0.8 ? "#d97706" : categoryColor(category);
+        return (
+          <li key={category} className="grid grid-cols-[8rem_1fr_auto] items-center gap-3 text-sm">
+            <span className="truncate text-zinc-600 dark:text-zinc-400">{category}</span>
+            <div className={`relative h-2 ${limit ? "rounded-r-[4px] bg-zinc-100 dark:bg-zinc-800" : ""}`}>
+              <div
+                className="h-full rounded-r-[4px]"
+                style={{ width: `${Math.min(Math.max(ratio * 100, 1), 100)}%`, background: color }}
+              />
+              {limit && <span aria-hidden className="absolute -top-1 right-0 h-4 w-px bg-zinc-400 dark:bg-zinc-500" />}
+            </div>
+            {editing === category ? (
+              <input
+                autoFocus
+                inputMode="decimal"
+                value={value}
+                onChange={(e) => setValue(e.target.value)}
+                onKeyDown={(e) => (e.key === "Enter" ? save(category) : e.key === "Escape" && setEditing(null))}
+                onBlur={() => save(category)}
+                placeholder="no limit"
+                aria-label={`Monthly limit for ${category}`}
+                className="w-24 rounded-md border border-zinc-300 bg-transparent px-1.5 py-0.5 font-mono text-xs tabular-nums outline-none focus:border-accent dark:border-zinc-700"
+              />
+            ) : (
+              <button
+                onClick={() => {
+                  setValue(limit ? String(limit / 100) : "");
+                  setEditing(category);
+                }}
+                className="rounded-md px-1.5 py-0.5 text-left font-mono text-xs tabular-nums text-zinc-500 transition-colors hover:bg-zinc-100 dark:hover:bg-zinc-800"
+                aria-label={`Set monthly limit for ${category}`}
+                title="Click to set a monthly limit"
+              >
+                {formatMoney(total, currency)}
+                {limit && <span className="text-zinc-400"> / {formatMoney(limit, currency)}</span>}
+              </button>
+            )}
+          </li>
+        );
+      })}
     </ul>
   );
 }
