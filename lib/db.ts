@@ -333,7 +333,22 @@ export function createDb(file: string) {
       if (manual !== null && manualAt !== null && (points.length === 0 || manualAt > points[points.length - 1].date)) {
         points.push({ date: manualAt, amount: Number(manual) });
       }
-      return points;
+      if (points.length !== 1) return points;
+      // One lone anchor draws no line: reconstruct earlier month-end balances
+      // by walking net cash flow (all directions, all categories) back from it.
+      const anchor = points[0];
+      const flow = db.prepare(
+        "SELECT COALESCE(SUM(CASE WHEN direction = 'credit' THEN amount ELSE -amount END), 0) AS v FROM transactions WHERE date > ? AND date <= ?"
+      );
+      const derived: { date: string; amount: number }[] = [];
+      for (const m of store.months().slice().reverse()) {
+        const [y, mo] = m.split("-").map(Number);
+        const end = `${m}-${String(new Date(y, mo, 0).getDate()).padStart(2, "0")}`;
+        if (end >= anchor.date) continue;
+        const net = (flow.get(end, anchor.date) as { v: number }).v;
+        derived.push({ date: end, amount: anchor.amount - net });
+      }
+      return [...derived, ...points];
     },
   };
   return store;
