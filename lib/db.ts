@@ -189,6 +189,19 @@ export function createDb(file: string) {
       if (latest) return { amount: latest.closing_balance, asOf: latest.period_end, source: "statement" };
       return null;
     },
+
+    // Statement closing balances over time, plus the manual entry when it is the freshest point.
+    balanceHistory(): { date: string; amount: number }[] {
+      const points = db
+        .prepare("SELECT period_end AS date, closing_balance AS amount FROM statements WHERE closing_balance IS NOT NULL ORDER BY period_end")
+        .all() as { date: string; amount: number }[];
+      const manual = store.getSetting("manual_balance");
+      const manualAt = store.getSetting("manual_balance_at");
+      if (manual !== null && manualAt !== null && (points.length === 0 || manualAt > points[points.length - 1].date)) {
+        points.push({ date: manualAt, amount: Number(manual) });
+      }
+      return points;
+    },
   };
   return store;
 }

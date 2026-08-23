@@ -82,3 +82,29 @@ describe("store", () => {
     expect(b.amount).toBe(toMinor(3900));
   });
 });
+
+describe("balanceHistory", () => {
+  const withStatement = (db: ReturnType<typeof createDb>, periodEnd: string, closing: number | null, hash: string) =>
+    db.insertStatement({ ...FIXTURE_EXTRACTION, period_end: periodEnd, closing_balance: closing, transactions: [] }, `${hash}.pdf`, hash);
+
+  it("returns statements sorted by period end, skipping NULL closing balances", () => {
+    const db = createDb(":memory:");
+    withStatement(db, "2026-07-31", 4187.42, "h2");
+    withStatement(db, "2026-05-31", 1000, "h1");
+    withStatement(db, "2026-06-30", null, "h-null");
+    expect(db.balanceHistory()).toEqual([
+      { date: "2026-05-31", amount: toMinor(1000) },
+      { date: "2026-07-31", amount: toMinor(4187.42) },
+    ]);
+  });
+
+  it("appends the manual balance only when it is newer than the latest statement", () => {
+    const db = createDb(":memory:");
+    withStatement(db, "2026-07-31", 4187.42, "h2");
+    db.setSetting("manual_balance", String(toMinor(3900)));
+    db.setSetting("manual_balance_at", "2026-07-15");
+    expect(db.balanceHistory()).toHaveLength(1);
+    db.setSetting("manual_balance_at", "2026-08-10");
+    expect(db.balanceHistory().at(-1)).toEqual({ date: "2026-08-10", amount: toMinor(3900) });
+  });
+});
