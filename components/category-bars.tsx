@@ -86,7 +86,7 @@ export function CategoryBars({
               </button>
             )}
             <span className="text-right">
-              {Math.abs(delta(total, prev[category] ?? 0) ?? 0) > 10 && <Delta current={total} prev={prev[category]} />}
+              {Math.abs(delta(total, prev[category] ?? 0) ?? 0) > 10 && <Delta current={total} prev={prev[category]} muted />}
             </span>
           </li>
         );
