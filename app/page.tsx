@@ -7,6 +7,7 @@ import { CategoryBars } from "@/components/category-bars";
 import { DailyChart } from "@/components/daily-chart";
 import { DonutChart } from "@/components/donut-chart";
 import { MonthlyTrend } from "@/components/monthly-trend";
+import { RecurringList } from "@/components/recurring-list";
 import { EngineSelect } from "@/components/engine-select";
 import { MonthNav } from "@/components/month-nav";
 import { TransactionsTable } from "@/components/transactions-table";
@@ -112,6 +113,11 @@ export default async function Dashboard({ searchParams }: PageProps<"/">) {
             <h2 className="mb-4 text-sm font-medium">Daily spend</h2>
             <DailyChart month={month} data={summary.byDay} currency={summary.currency} />
           </div>
+        </section>
+
+        <section className="border-t border-zinc-200 pt-8 dark:border-zinc-800">
+          <h2 className="mb-4 text-sm font-medium">Recurring</h2>
+          <RecurringList data={db.recurring()} currency={summary.currency} />
         </section>
 
         <section className="border-t border-zinc-200 pt-8 dark:border-zinc-800">

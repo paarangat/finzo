@@ -81,4 +81,31 @@ describe("store", () => {
     expect(b.source).toBe("manual");
     expect(b.amount).toBe(toMinor(3900));
   });
+
+  it("detects recurring charges by steady gap and amount", () => {
+    const db = createDb(":memory:");
+    const extraction = structuredClone(FIXTURE_EXTRACTION);
+    const t = (date: string, description: string, amount: number) => ({ date, description, amount, direction: "debit" as const, category: "Subscriptions" as const });
+    extraction.transactions = [
+      ...extraction.transactions, // contains Netflix 15.49 on 2026-07-05
+      t("2026-08-05", "NETFLIX *8831", 15.49),
+      t("2026-09-04", "Netflix", 15.49),
+      t("2026-10-05", "Netflix", 17.99), // price rise
+      t("2026-07-01", "Gym", 40), // only 2 charges
+      t("2026-08-01", "Gym", 40),
+      t("2026-07-02", "Random Shop", 20), // irregular gaps
+      t("2026-07-10", "Random Shop", 20),
+      t("2026-09-25", "Random Shop", 20),
+      t("2026-07-03", "Coffee Club", 5), // weekly
+      t("2026-07-10", "Coffee Club", 5),
+      t("2026-07-17", "Coffee Club", 5.2),
+    ];
+    db.insertStatement(extraction, "multi.pdf", "hash-1");
+    const rec = db.recurring();
+    expect(rec.map((r) => r.merchant)).toEqual(["Netflix", "Coffee Club"]);
+    const netflix = rec[0];
+    expect(netflix).toMatchObject({ cadence: "monthly", count: 4, lastDate: "2026-10-05", priceChanged: true, category: "Subscriptions" });
+    expect(netflix.amount).toBe(toMinor(15.49));
+    expect(rec[1]).toMatchObject({ cadence: "weekly", count: 3, priceChanged: false });
+  });
 });
