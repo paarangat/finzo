@@ -2,6 +2,7 @@ import { getDb } from "@/lib/db";
 import { detectEngines, resolveEngine } from "@/lib/engines";
 import { formatMoney } from "@/lib/format";
 import { BalanceStat } from "@/components/balance-stat";
+import { BalanceSparkline } from "@/components/balance-sparkline";
 import { CategoryBars } from "@/components/category-bars";
 import { DailyChart } from "@/components/daily-chart";
 import { DonutChart } from "@/components/donut-chart";
@@ -64,7 +65,10 @@ export default async function Dashboard({ searchParams }: PageProps<"/">) {
         </div>
 
         <section className="grid gap-8 sm:grid-cols-3">
-          <BalanceStat balance={balance} currency={summary.currency} />
+          <div>
+            <BalanceStat balance={balance} currency={summary.currency} />
+            <BalanceSparkline data={db.balanceHistory()} currency={summary.currency} />
+          </div>
           <div>
             <p className="text-xs font-medium text-zinc-500">Spent this month</p>
             <p className="mt-1 font-mono text-2xl tabular-nums tracking-tight">{formatMoney(summary.spent, summary.currency)}</p>
