@@ -13,3 +13,9 @@ export function formatDay(date: string): string {
   const [y, m, d] = date.split("-").map(Number);
   return new Date(Date.UTC(y, m - 1, d)).toLocaleDateString("en", { month: "short", day: "numeric", timeZone: "UTC" });
 }
+
+/** Percent change from prev to current, rounded to whole percent. null when there is nothing to compare against. */
+export function delta(current: number, prev: number): number | null {
+  if (!prev) return null;
+  return Math.round(((current - prev) / prev) * 100);
+}
