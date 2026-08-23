@@ -1,16 +1,16 @@
-import { AutoRefresh } from "@/components/auto-refresh";
 import { getDb } from "@/lib/db";
 import { detectEngines, resolveEngine } from "@/lib/engines";
 import { formatMoney } from "@/lib/format";
 import { BalanceStat } from "@/components/balance-stat";
+import { BalanceSparkline } from "@/components/balance-sparkline";
 import { CategoryBars } from "@/components/category-bars";
 import { DailyChart } from "@/components/daily-chart";
 import { DonutChart } from "@/components/donut-chart";
 import { MonthlyTrend } from "@/components/monthly-trend";
 import { RecurringList } from "@/components/recurring-list";
-import { EngineSelect } from "@/components/engine-select";
 import { MonthNav } from "@/components/month-nav";
-import { TransactionsTable } from "@/components/transactions-table";
+import { ReviewTeaser } from "@/components/review-teaser";
+import { SiteHeader } from "@/components/site-header";
 import { Uploader } from "@/components/uploader";
 
 export const dynamic = "force-dynamic";
@@ -23,23 +23,10 @@ export default async function Dashboard({ searchParams }: PageProps<"/">) {
   const engine = resolveEngine(db.getSetting("engine"));
   const noCli = !available.includes("claude") && !available.includes("codex");
 
-  const header = (
-    <header className="border-b border-zinc-200 dark:border-zinc-800">
-      <AutoRefresh />
-      <div className="mx-auto flex h-14 max-w-5xl items-center justify-between px-6">
-        <span className="text-lg font-semibold tracking-tight">finzo</span>
-        <div className="flex items-center gap-4">
-          <EngineSelect current={engine.id} available={available} />
-          {months.length > 0 && <Uploader variant="button" engineLabel={engine.label} />}
-        </div>
-      </div>
-    </header>
-  );
-
   if (months.length === 0) {
     return (
       <div className="flex min-h-dvh flex-col">
-        {header}
+        <SiteHeader active="overview" engine={engine} available={available} showUpload={false} />
         <main className="flex flex-1 flex-col items-center justify-center gap-6 px-6 py-16">
           <div className="max-w-lg text-center">
             <h1 className="text-2xl font-semibold tracking-tight">Track your spending in minutes</h1>
@@ -67,19 +54,22 @@ export default async function Dashboard({ searchParams }: PageProps<"/">) {
 
   const month = typeof monthParam === "string" && months.includes(monthParam) ? monthParam : months[0];
   const summary = db.summary(month);
-  const transactions = db.transactions(month);
   const balance = db.balance();
+  const ambiguous = db.ambiguous();
 
   return (
     <div className="flex min-h-dvh flex-col">
-      {header}
+      <SiteHeader active="overview" reviewCount={ambiguous.length} engine={engine} available={available} showUpload />
       <main className="mx-auto w-full max-w-5xl flex-1 space-y-10 px-6 py-8">
         <div className="flex flex-wrap items-center justify-between gap-4">
           <MonthNav months={months} current={month} />
         </div>
 
         <section className="grid gap-8 sm:grid-cols-3">
-          <BalanceStat balance={balance} currency={summary.currency} />
+          <div>
+            <BalanceStat balance={balance} currency={summary.currency} />
+            <BalanceSparkline data={db.balanceHistory()} currency={summary.currency} />
+          </div>
           <div>
             <p className="text-xs font-medium text-zinc-500">Spent this month</p>
             <p className="mt-1 font-mono text-2xl tabular-nums tracking-tight">{formatMoney(summary.spent, summary.currency)}</p>
@@ -99,7 +89,7 @@ export default async function Dashboard({ searchParams }: PageProps<"/">) {
               <DonutChart data={summary.byCategory} spent={summary.spent} currency={summary.currency} />
             </div>
             <div className="lg:col-span-3">
-              <CategoryBars data={summary.byCategory} currency={summary.currency} />
+              <CategoryBars data={summary.byCategory} budgets={db.budgets(month)} currency={summary.currency} />
             </div>
           </div>
         </section>
@@ -120,10 +110,11 @@ export default async function Dashboard({ searchParams }: PageProps<"/">) {
           <RecurringList data={db.recurring()} currency={summary.currency} />
         </section>
 
-        <section className="border-t border-zinc-200 pt-8 dark:border-zinc-800">
-          <h2 className="mb-4 text-sm font-medium">Transactions</h2>
-          <TransactionsTable transactions={transactions} currency={summary.currency} />
-        </section>
+        {ambiguous.length > 0 && (
+          <section className="border-t border-zinc-200 pt-8 dark:border-zinc-800">
+            <ReviewTeaser top={ambiguous[0]} count={ambiguous.length} currency={summary.currency} />
+          </section>
+        )}
       </main>
     </div>
   );
