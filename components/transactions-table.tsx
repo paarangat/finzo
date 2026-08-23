@@ -1,20 +1,31 @@
 "use client";
 
+import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { PencilSimple, Scissors, TrashSimple } from "@phosphor-icons/react";
 import { CATEGORIES } from "@/lib/categories";
 import { formatDate, formatDay, formatMoney } from "@/lib/format";
-import type { TransactionRow } from "@/lib/db";
+import { SplitDialog, TransactionDialog } from "@/components/transaction-editor";
+import type { Account, TransactionRow } from "@/lib/db";
 
 export function TransactionsTable({
   transactions,
   currency,
+  accounts = [],
   showYear = false,
+  showAccount = false,
 }: {
   transactions: TransactionRow[];
   currency: string;
+  accounts?: Account[];
   showYear?: boolean;
+  /** show which account each row belongs to (useful in the combined view) */
+  showAccount?: boolean;
 }) {
   const router = useRouter();
+  const [editing, setEditing] = useState<TransactionRow | null>(null);
+  const [splitting, setSplitting] = useState<TransactionRow | null>(null);
+  const [confirmingDelete, setConfirmingDelete] = useState<number | null>(null);
 
   async function recategorize(id: number, category: string) {
     await fetch(`/api/transactions/${id}`, {
@@ -25,6 +36,15 @@ export function TransactionsTable({
     router.refresh();
   }
 
+  async function remove(id: number) {
+    await fetch(`/api/transactions/${id}`, { method: "DELETE" });
+    setConfirmingDelete(null);
+    router.refresh();
+  }
+
+  const iconBtn =
+    "rounded-md p-1.5 text-zinc-400 transition-colors hover:bg-zinc-100 hover:text-foreground dark:hover:bg-zinc-800";
+
   return (
     <div className="overflow-x-auto md:overflow-x-visible">
       <table className="w-full text-sm">
@@ -33,17 +53,22 @@ export function TransactionsTable({
           <tr className="text-left text-xs text-zinc-500">
             <th className="py-2 pr-4 font-medium">Date</th>
             <th className="py-2 pr-4 font-medium">Description</th>
+            {showAccount && <th className="py-2 pr-4 font-medium">Account</th>}
             <th className="py-2 pr-4 font-medium">Category</th>
             <th className="py-2 text-right font-medium">Amount</th>
+            <th className="py-2 pl-3 text-right font-medium">
+              <span className="sr-only">Actions</span>
+            </th>
           </tr>
         </thead>
         <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800/60">
           {transactions.map((t) => (
-            <tr key={t.id}>
+            <tr key={t.id} className="group">
               <td className="whitespace-nowrap py-2.5 pr-4 font-mono text-xs text-zinc-500">{showYear ? formatDate(t.date) : formatDay(t.date)}</td>
               <td className="max-w-75 truncate py-2.5 pr-4" title={t.description}>
                 {t.description}
               </td>
+              {showAccount && <td className="whitespace-nowrap py-2.5 pr-4 text-xs text-zinc-500">{t.account}</td>}
               <td className="py-2.5 pr-4">
                 <select
                   value={t.category}
@@ -66,10 +91,36 @@ export function TransactionsTable({
                 {t.direction === "credit" ? "+" : ""}
                 {formatMoney(t.amount, currency)}
               </td>
+              <td className="whitespace-nowrap py-1.5 pl-3 text-right">
+                {confirmingDelete === t.id ? (
+                  <span className="inline-flex items-center gap-1 text-xs">
+                    <button onClick={() => remove(t.id)} className="rounded-md px-2 py-1 font-medium text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/40">
+                      Delete
+                    </button>
+                    <button onClick={() => setConfirmingDelete(null)} className="rounded-md px-2 py-1 text-zinc-500 hover:text-foreground">
+                      Keep
+                    </button>
+                  </span>
+                ) : (
+                  <span className="inline-flex opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
+                    <button onClick={() => setEditing(t)} className={iconBtn} aria-label={`Edit ${t.description}`} title="Edit">
+                      <PencilSimple size={14} />
+                    </button>
+                    <button onClick={() => setSplitting(t)} className={iconBtn} aria-label={`Split ${t.description}`} title="Split across categories">
+                      <Scissors size={14} />
+                    </button>
+                    <button onClick={() => setConfirmingDelete(t.id)} className={iconBtn} aria-label={`Delete ${t.description}`} title="Delete">
+                      <TrashSimple size={14} />
+                    </button>
+                  </span>
+                )}
+              </td>
             </tr>
           ))}
         </tbody>
       </table>
+      <TransactionDialog open={!!editing} onClose={() => setEditing(null)} txn={editing} accounts={accounts} />
+      <SplitDialog txn={splitting} onClose={() => setSplitting(null)} currency={currency} />
     </div>
   );
 }

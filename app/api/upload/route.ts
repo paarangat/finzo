@@ -13,6 +13,12 @@ export async function POST(req: Request) {
   if (!(file instanceof File)) {
     return NextResponse.json({ error: "No file uploaded." }, { status: 400 });
   }
+  // Optional target account; without it the statement's bank name picks (or creates) the account.
+  const accountRaw = form.get("account_id");
+  const accountId = typeof accountRaw === "string" && accountRaw !== "" ? Number(accountRaw) : undefined;
+  if (accountId !== undefined && !Number.isInteger(accountId)) {
+    return NextResponse.json({ error: "Invalid account." }, { status: 400 });
+  }
   const ext = path.extname(file.name).toLowerCase();
   if (!ALLOWED.includes(ext)) {
     return NextResponse.json({ error: `Unsupported file type "${ext}". Upload a PDF or CSV statement.` }, { status: 400 });
@@ -33,7 +39,7 @@ export async function POST(req: Request) {
   const engine = resolveEngine(db.getSetting("engine"));
   try {
     const extraction = await extractWithRetry(engine, filePath);
-    const result = db.insertStatement(extraction, file.name, fileHash);
+    const result = db.insertStatement(extraction, file.name, fileHash, accountId);
     return NextResponse.json({ ok: true, month: extraction.period_end.slice(0, 7), ...result });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);

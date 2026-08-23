@@ -6,7 +6,16 @@ import { UploadSimple } from "@phosphor-icons/react";
 
 type Status = { state: "idle" } | { state: "uploading" } | { state: "error"; message: string; detail?: string };
 
-export function Uploader({ variant, engineLabel }: { variant: "button" | "dropzone"; engineLabel: string }) {
+export function Uploader({
+  variant,
+  engineLabel,
+  accountId,
+}: {
+  variant: "button" | "dropzone";
+  engineLabel: string;
+  /** target account; without it the statement's bank name picks (or creates) the account */
+  accountId?: number;
+}) {
   const router = useRouter();
   const inputRef = useRef<HTMLInputElement>(null);
   const [status, setStatus] = useState<Status>({ state: "idle" });
@@ -16,6 +25,7 @@ export function Uploader({ variant, engineLabel }: { variant: "button" | "dropzo
     setStatus({ state: "uploading" });
     const body = new FormData();
     body.append("file", file);
+    if (accountId !== undefined) body.append("account_id", String(accountId));
     try {
       const res = await fetch("/api/upload", { method: "POST", body });
       const json = await res.json();

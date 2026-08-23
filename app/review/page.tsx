@@ -13,7 +13,15 @@ export default async function Review() {
 
   return (
     <div className="flex min-h-dvh flex-col">
-      <SiteHeader active="review" reviewCount={deck.length} engine={engine} available={available} showUpload={false} />
+      <SiteHeader
+        active="review"
+        reviewCount={deck.length}
+        engine={engine}
+        available={available}
+        showUpload={false}
+        accounts={db.accounts()}
+        selectedAccount={db.selectedAccount()}
+      />
       <main className="mx-auto flex w-full max-w-2xl flex-1 flex-col px-6 py-8">
         <ReviewDeck deck={deck} currency={db.currency()} />
       </main>

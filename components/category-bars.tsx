@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { CATEGORIES, NON_SPEND_CATEGORIES } from "@/lib/categories";
 import { categoryColor } from "@/lib/colors";
 import { delta, formatMoney } from "@/lib/format";
 import { Delta } from "@/components/delta";
@@ -22,17 +23,22 @@ export function CategoryBars({
   const router = useRouter();
   const [editing, setEditing] = useState<string | null>(null);
   const [value, setValue] = useState("");
+  const [adding, setAdding] = useState<string | null>(null);
 
   const limits = new Map(budgets.map((b) => [b.category, b.limit]));
   // Budgeted categories with no spend this month still get a (0%) row.
   const rows = [...data, ...budgets.filter((b) => !data.some((d) => d.category === b.category)).map((b) => ({ category: b.category, total: 0 }))];
+  // A category picked from "Set a budget" gets a temporary 0-spend row to type into.
+  if (adding && !rows.some((r) => r.category === adding)) rows.push({ category: adding as (typeof rows)[number]["category"], total: 0 });
   if (rows.length === 0) {
     return <p className="py-8 text-sm text-zinc-500">No spending recorded this month.</p>;
   }
   const max = Math.max(...data.map((d) => d.total), 1);
+  const unbudgeted = CATEGORIES.filter((c) => !NON_SPEND_CATEGORIES.includes(c) && !limits.has(c) && c !== adding);
 
   async function save(category: string) {
     const amount = value.trim() === "" ? null : Number(value);
+    setAdding(null);
     if (amount !== null && !(amount > 0)) return setEditing(null);
     await fetch("/api/budgets", {
       method: "PUT",
@@ -91,6 +97,28 @@ export function CategoryBars({
           </li>
         );
       })}
+      {unbudgeted.length > 0 && (
+        <li>
+          <select
+            value=""
+            onChange={(e) => {
+              if (!e.target.value) return;
+              setAdding(e.target.value);
+              setEditing(e.target.value);
+              setValue("");
+            }}
+            aria-label="Set a budget for a category"
+            className="rounded-lg border border-dashed border-zinc-300 bg-transparent px-2 py-1.5 text-xs text-zinc-500 dark:border-zinc-700"
+          >
+            <option value="">＋ Set a budget…</option>
+            {unbudgeted.map((c) => (
+              <option key={c} value={c}>
+                {c}
+              </option>
+            ))}
+          </select>
+        </li>
+      )}
     </ul>
   );
 }

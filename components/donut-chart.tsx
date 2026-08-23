@@ -10,15 +10,16 @@ export function DonutChart({ data, spent, currency }: { data: Summary["byCategor
   const rest = data.slice(TOP).reduce((acc, d) => acc + d.total, 0);
   const slices = rest > 0 ? [...top, { label: "Everything else", total: rest, color: REMAINDER }] : top;
 
-  let start = 0;
+  // each slice starts where the previous ones end
+  const starts = slices.map((_, i) => slices.slice(0, i).reduce((acc, s) => acc + (s.total / spent) * 100, 0));
   return (
     <div className="relative mx-auto size-52">
       <svg viewBox="0 0 120 120" className="size-full -rotate-90">
-        {slices.map((s) => {
+        {slices.map((s, i) => {
           const pct = (s.total / spent) * 100;
           const gap = slices.length > 1 ? 1.2 : 0; // 2px-ish surface gap between slices
           const len = Math.max(pct - gap, 0.4);
-          const el = (
+          return (
             <circle
               key={s.label}
               cx="60"
@@ -29,14 +30,12 @@ export function DonutChart({ data, spent, currency }: { data: Summary["byCategor
               strokeWidth="17"
               pathLength={100}
               strokeDasharray={`${len} ${100 - len}`}
-              strokeDashoffset={-start - gap / 2}
+              strokeDashoffset={-starts[i] - gap / 2}
               className="transition-opacity hover:opacity-75"
             >
               <title>{`${s.label}: ${formatMoney(s.total, currency)}`}</title>
             </circle>
           );
-          start += pct;
-          return el;
         })}
       </svg>
       <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">

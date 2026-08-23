@@ -173,6 +173,164 @@ describe("store", () => {
   });
 });
 
+describe("accounts", () => {
+  it("auto-creates an account from the statement's bank name", () => {
+    const db = createDb(":memory:");
+    insertFixture(db);
+    expect(db.accounts()).toEqual([{ id: 1, name: "Fixture Bank", kind: "checking" }]);
+    db.insertStatement({ ...FIXTURE_EXTRACTION, bank_name: "Other Bank" }, "aug.pdf", "hash-2");
+    expect(db.accounts().map((a) => a.name)).toEqual(["Fixture Bank", "Other Bank"]);
+  });
+
+  it("uploads into an explicit account and filters queries by account", () => {
+    const db = createDb(":memory:");
+    const acc = db.findOrCreateAccount("Credit Card", "credit");
+    insertFixture(db, "hash-1");
+    const other = structuredClone(FIXTURE_EXTRACTION);
+    other.transactions = [{ date: "2026-06-15", description: "Card purchase", amount: 50, direction: "debit", category: "Shopping" }];
+    db.insertStatement(other, "card.pdf", "hash-2", acc);
+    expect(db.months()).toEqual(["2026-07", "2026-06"]);
+    expect(db.months(acc)).toEqual(["2026-06"]);
+    expect(db.summary("2026-06", acc).spent).toBe(toMinor(50));
+    expect(db.transactions("2026-06", acc)[0].account).toBe("Credit Card");
+    // identical transactions in different accounts both survive dedup
+    db.insertStatement(other, "card2.pdf", "hash-3");
+    expect(db.searchTransactions("Card purchase")).toHaveLength(2);
+  });
+
+  it("sums the latest closing balance per account in the combined view", () => {
+    const db = createDb(":memory:");
+    insertFixture(db, "hash-1");
+    const acc = db.findOrCreateAccount("Savings", "savings");
+    db.insertStatement({ ...FIXTURE_EXTRACTION, closing_balance: 1000, period_end: "2026-07-15" }, "sav.pdf", "hash-2", acc);
+    expect(db.balance()).toEqual({ amount: toMinor(4187.42 + 1000), asOf: "2026-07-31", source: "statement" });
+    expect(db.balance(acc)).toEqual({ amount: toMinor(1000), asOf: "2026-07-15", source: "statement" });
+  });
+
+  it("tracks the selected account and ignores stale ids", () => {
+    const db = createDb(":memory:");
+    insertFixture(db);
+    expect(db.selectedAccount()).toBeUndefined();
+    db.setSetting("account", "1");
+    expect(db.selectedAccount()).toBe(1);
+    db.setSetting("account", "99");
+    expect(db.selectedAccount()).toBeUndefined();
+    db.setSetting("account", "all");
+    expect(db.selectedAccount()).toBeUndefined();
+  });
+});
+
+describe("category rules", () => {
+  it("remember=true saves a rule, retro-applies it, and tags future uploads", () => {
+    const db = createDb(":memory:");
+    const extraction = structuredClone(FIXTURE_EXTRACTION);
+    extraction.transactions.push(
+      { date: "2026-07-10", description: "UBER EATS 1234", amount: 20, direction: "debit", category: "Other" },
+      { date: "2026-07-12", description: "UBER EATS 9876", amount: 35, direction: "debit", category: "Other" }
+    );
+    db.insertStatement(extraction, "july.pdf", "hash-1");
+    const target = db.searchTransactions("UBER EATS 1234")[0];
+    db.setCategory(target.id, "Food & Dining", true);
+    // both past rows recategorized, only the direct target marked overridden
+    const rows = db.searchTransactions("UBER EATS");
+    expect(rows.map((r) => r.category)).toEqual(["Food & Dining", "Food & Dining"]);
+    expect(rows.find((r) => r.id === target.id)!.category_overridden).toBe(1);
+    expect(db.ambiguous().map((t) => t.description)).not.toContain("UBER EATS 9876");
+    // future uploads apply the rule over the model's guess
+    const next = structuredClone(FIXTURE_EXTRACTION);
+    next.transactions = [{ date: "2026-08-02", description: "UBER EATS 5555", amount: 18, direction: "debit", category: "Other" }];
+    db.insertStatement(next, "aug.pdf", "hash-2");
+    expect(db.searchTransactions("UBER EATS 5555")[0].category).toBe("Food & Dining");
+  });
+
+  it("remember=false changes only the one transaction", () => {
+    const db = createDb(":memory:");
+    insertFixture(db);
+    const [a, b] = db.searchTransactions("Whole Harvest");
+    db.setCategory(a.id, "Shopping");
+    expect(db.transaction(a.id)!.category).toBe("Shopping");
+    expect(db.transaction(b.id)!.category).toBe("Groceries");
+    expect(db.rules().size).toBe(0);
+  });
+
+  it("a rule does not stomp manual overrides", () => {
+    const db = createDb(":memory:");
+    insertFixture(db);
+    const [a, b, c] = db.searchTransactions("Whole Harvest");
+    db.setCategory(a.id, "Shopping"); // manual override
+    db.setCategory(b.id, "Food & Dining", true); // rule
+    expect(db.transaction(a.id)!.category).toBe("Shopping");
+    expect(db.transaction(c.id)!.category).toBe("Food & Dining");
+  });
+});
+
+describe("manual transactions", () => {
+  it("adds, edits, and deletes a manual transaction", () => {
+    const db = createDb(":memory:");
+    insertFixture(db);
+    const acc = db.accounts()[0].id;
+    const id = db.addTransaction({ accountId: acc, date: "2026-07-20", description: "Cash lunch", amount: toMinor(14), direction: "debit", category: "Food & Dining" });
+    expect(db.transaction(id)).toMatchObject({ statement_id: null, description: "Cash lunch", amount: toMinor(14), category_overridden: 1 });
+    db.updateTransaction(id, { amount: toMinor(16), category: "Groceries" });
+    expect(db.transaction(id)).toMatchObject({ amount: toMinor(16), category: "Groceries" });
+    db.deleteTransaction(id);
+    expect(db.transaction(id)).toBeUndefined();
+  });
+
+  it("splits a transaction into parts that sum to the original", () => {
+    const db = createDb(":memory:");
+    insertFixture(db);
+    const t = db.searchTransactions("Trailhead Outfitters").find((r) => r.direction === "debit")!;
+    expect(() => db.splitTransaction(t.id, [{ amount: 100, category: "Shopping" }, { amount: 100, category: "Health" }])).toThrow();
+    db.splitTransaction(t.id, [
+      { amount: toMinor(100), category: "Shopping" },
+      { amount: toMinor(37.62), category: "Health" },
+    ]);
+    const parts = db.searchTransactions("Trailhead Outfitters").filter((r) => r.direction === "debit");
+    expect(parts.map((p) => [p.amount, p.category]).sort()).toEqual([
+      [toMinor(100), "Shopping"],
+      [toMinor(37.62), "Health"],
+    ]);
+    // the first part inherits the txn_hash, so an overlapping re-upload can't resurrect the original
+    const again = db.insertStatement(FIXTURE_EXTRACTION, "july2.pdf", "hash-2");
+    expect(again.inserted).toBe(0);
+  });
+});
+
+describe("demo data", () => {
+  it("clearDemo removes demo statements, empty accounts, and the flag", () => {
+    const db = createDb(":memory:");
+    db.insertStatement(FIXTURE_EXTRACTION, "demo.pdf", "demo-2026-07");
+    db.setSetting("demo", "1");
+    expect(db.months()).toEqual(["2026-07"]);
+    db.clearDemo();
+    expect(db.months()).toEqual([]);
+    expect(db.accounts()).toEqual([]);
+    expect(db.getSetting("demo")).toBeNull();
+  });
+
+  it("clearDemo keeps accounts that still hold real data", () => {
+    const db = createDb(":memory:");
+    db.insertStatement(FIXTURE_EXTRACTION, "demo.pdf", "demo-2026-07");
+    db.insertStatement({ ...FIXTURE_EXTRACTION, period_start: "2026-08-01", period_end: "2026-08-31", transactions: [
+      { date: "2026-08-02", description: "Real charge", amount: 10, direction: "debit", category: "Other" },
+    ] }, "real.pdf", "hash-real");
+    db.clearDemo();
+    expect(db.accounts().map((a) => a.name)).toEqual(["Fixture Bank"]);
+    expect(db.searchTransactions("Real charge")).toHaveLength(1);
+  });
+});
+
+describe("export", () => {
+  it("joins account and statement names onto every row", () => {
+    const db = createDb(":memory:");
+    insertFixture(db);
+    const rows = db.exportRows();
+    expect(rows).toHaveLength(FIXTURE_EXTRACTION.transactions.length);
+    expect(rows[0]).toMatchObject({ account: "Fixture Bank", statement: "july.pdf" });
+  });
+});
+
 describe("balanceHistory", () => {
   const withStatement = (db: ReturnType<typeof createDb>, periodEnd: string, closing: number | null, hash: string) =>
     db.insertStatement({ ...FIXTURE_EXTRACTION, period_end: periodEnd, closing_balance: closing, transactions: [] }, `${hash}.pdf`, hash);
