@@ -71,6 +71,24 @@ describe("store", () => {
     expect(db.summary("2026-07").byCategory.find((c) => c.category === "Subscriptions")!.total).toBe(toMinor(11.99));
   });
 
+  it("lists ambiguous debits with merchant-based suggestions", () => {
+    const db = createDb(":memory:");
+    const extraction = structuredClone(FIXTURE_EXTRACTION);
+    extraction.transactions.push(
+      { date: "2026-07-10", description: "AMZN Mktp 1234", amount: 20, direction: "debit", category: "Other" },
+      { date: "2026-07-12", description: "AMZN Mktp 9876", amount: 35, direction: "debit", category: "Shopping" },
+      { date: "2026-07-13", description: "MYSTERY POS 77", amount: 5, direction: "debit", category: "Other" }
+    );
+    db.insertStatement(extraction, "july.pdf", "hash-1");
+    const deck = db.ambiguous();
+    // debits only (the fixture's "Other" refund is a credit), newest first
+    expect(deck.map((t) => t.description)).toEqual(["MYSTERY POS 77", "AMZN Mktp 1234"]);
+    expect(deck[1].suggestion).toBe("Shopping"); // same merchant modulo digits
+    expect(deck[0].suggestion).toBeNull();
+    db.setCategory(deck[1].id, "Shopping");
+    expect(db.ambiguous().map((t) => t.description)).toEqual(["MYSTERY POS 77"]);
+  });
+
   it("balance prefers the statement until a newer manual entry exists", () => {
     const db = createDb(":memory:");
     expect(db.balance()).toBeNull();
