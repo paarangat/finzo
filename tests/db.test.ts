@@ -110,6 +110,20 @@ describe("store", () => {
     expect(b.amount).toBe(toMinor(3900));
   });
 
+  it("derives month-end balance history from a single anchor", () => {
+    const db = createDb(":memory:");
+    const extraction = structuredClone(FIXTURE_EXTRACTION);
+    extraction.transactions.push({ date: "2026-06-10", description: "June rent", amount: 100, direction: "debit", category: "Rent & Housing" });
+    db.insertStatement(extraction, "july.pdf", "hash-1");
+    const julyNet = FIXTURE_EXTRACTION.transactions
+      .filter((t) => t.date.startsWith("2026-07"))
+      .reduce((acc, t) => acc + (t.direction === "credit" ? toMinor(t.amount) : -toMinor(t.amount)), 0);
+    expect(db.balanceHistory()).toEqual([
+      { date: "2026-06-30", amount: toMinor(4187.42) - julyNet },
+      { date: "2026-07-31", amount: toMinor(4187.42) },
+    ]);
+  });
+
   it("detects recurring charges by steady gap and amount", () => {
     const db = createDb(":memory:");
     const extraction = structuredClone(FIXTURE_EXTRACTION);
