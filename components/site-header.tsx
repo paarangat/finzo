@@ -1,7 +1,9 @@
 import Link from "next/link";
+import { AccountSwitcher } from "@/components/account-switcher";
 import { AutoRefresh } from "@/components/auto-refresh";
 import { EngineSelect } from "@/components/engine-select";
 import { Uploader } from "@/components/uploader";
+import type { Account } from "@/lib/db";
 import type { EngineId } from "@/lib/engines/types";
 
 const TABS = [
@@ -18,12 +20,16 @@ export function SiteHeader({
   engine,
   available,
   showUpload,
+  accounts = [],
+  selectedAccount,
 }: {
   active: Tab;
   reviewCount?: number;
   engine: { id: EngineId; label: string };
   available: EngineId[];
   showUpload: boolean;
+  accounts?: Account[];
+  selectedAccount?: number;
 }) {
   return (
     <header className="border-b border-zinc-200 dark:border-zinc-800">
@@ -49,8 +55,9 @@ export function SiteHeader({
           ))}
         </nav>
         <div className="ml-auto flex items-center gap-3">
+          {accounts.length > 1 && <AccountSwitcher accounts={accounts} selected={selectedAccount} />}
           <EngineSelect current={engine.id} available={available} />
-          {showUpload && <Uploader variant="button" engineLabel={engine.label} />}
+          {showUpload && <Uploader variant="button" engineLabel={engine.label} accountId={selectedAccount} />}
         </div>
       </div>
     </header>

@@ -21,6 +21,7 @@ export function ReviewDeck({ deck, currency }: { deck: ReviewCard[]; currency: s
   const [dx, setDx] = useState(0);
   const [dragging, setDragging] = useState(false);
   const [fly, setFly] = useState<0 | -1 | 1>(0);
+  const [remember, setRemember] = useState(true);
   const card = fly ? deck[i - 1] : deck[i];
 
   const advance = useCallback((dir: -1 | 1) => {
@@ -38,11 +39,11 @@ export function ReviewDeck({ deck, currency }: { deck: ReviewCard[]; currency: s
       fetch(`/api/transactions/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ category }),
+        body: JSON.stringify({ category, remember }),
       });
       advance(dir);
     },
-    [advance]
+    [advance, remember]
   );
 
   const skip = useCallback(() => advance(-1), [advance]);
@@ -155,6 +156,11 @@ export function ReviewDeck({ deck, currency }: { deck: ReviewCard[]; currency: s
           </button>
         ))}
       </div>
+
+      <label className="flex min-h-11 cursor-pointer items-center gap-2 text-xs text-zinc-500">
+        <input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} className="size-3.5 accent-emerald-700" />
+        Remember my choice for this merchant (applies to past and future uploads)
+      </label>
 
       <p className="text-xs text-zinc-500">
         Swipe or <kbd className="rounded border border-zinc-200 px-1 font-mono dark:border-zinc-800">→</kbd> accept

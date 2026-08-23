@@ -5,15 +5,23 @@ import path from "node:path";
 import type { Extraction } from "./schema";
 import { NON_SPEND_CATEGORIES, type Category } from "./categories";
 
+export interface Account {
+  id: number;
+  name: string;
+  kind: "checking" | "savings" | "credit" | "cash";
+}
+
 export interface TransactionRow {
   id: number;
-  statement_id: number;
+  statement_id: number | null;
+  account_id: number;
   date: string;
   description: string;
   amount: number; // minor units, always positive; direction says which way
   direction: "debit" | "credit";
   category: Category;
   category_overridden: 0 | 1;
+  account?: string; // joined account name
 }
 
 export interface Summary {
@@ -34,6 +42,16 @@ export interface Balance {
   amount: number;
   asOf: string;
   source: "manual" | "statement";
+}
+
+export interface ExportRow {
+  date: string;
+  description: string;
+  amount: number; // minor units
+  direction: string;
+  category: string;
+  account: string;
+  statement: string | null;
 }
 
 export interface Recurring {
@@ -64,14 +82,31 @@ export const perMonth = (r: Recurring) => r.amount * CADENCES.find((c) => c.name
 const txnHash = (key: string) => createHash("sha256").update(key).digest("hex");
 
 // "AMZN Mktp 1234" and "AMZN Mktp 9876" are the same merchant: drop digits/punctuation.
-const normalizeDesc = (d: string) => d.toLowerCase().replace(/[^a-z]+/g, " ").trim();
+export const normalizeDesc = (d: string) => d.toLowerCase().replace(/[^a-z]+/g, " ").trim();
+
+// Account ids are validated integers, safe to interpolate into a WHERE clause.
+const accFilter = (accountId: number | undefined, col = "account_id") => {
+  if (accountId === undefined) return "";
+  if (!Number.isInteger(accountId)) throw new Error("Invalid account id");
+  return ` AND ${col} = ${accountId}`;
+};
 
 export function createDb(file: string) {
   if (file !== ":memory:") mkdirSync(path.dirname(file), { recursive: true });
   const db = new Database(file);
   db.pragma("journal_mode = WAL");
-  db.pragma("foreign_keys = ON"); // ON DELETE CASCADE needs this in SQLite
   db.exec(`
+    CREATE TABLE IF NOT EXISTS accounts (
+      id INTEGER PRIMARY KEY,
+      name TEXT NOT NULL UNIQUE,
+      kind TEXT NOT NULL DEFAULT 'checking' CHECK (kind IN ('checking','savings','credit','cash')),
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE TABLE IF NOT EXISTS rules (
+      matcher TEXT PRIMARY KEY,
+      category TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
     CREATE TABLE IF NOT EXISTS statements (
       id INTEGER PRIMARY KEY,
       filename TEXT NOT NULL,
@@ -81,41 +116,97 @@ export function createDb(file: string) {
       period_start TEXT NOT NULL,
       period_end TEXT NOT NULL,
       closing_balance INTEGER,
+      account_id INTEGER REFERENCES accounts(id),
       uploaded_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
     CREATE TABLE IF NOT EXISTS transactions (
       id INTEGER PRIMARY KEY,
-      statement_id INTEGER NOT NULL REFERENCES statements(id) ON DELETE CASCADE,
+      statement_id INTEGER REFERENCES statements(id) ON DELETE CASCADE,
+      account_id INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
       date TEXT NOT NULL,
       description TEXT NOT NULL,
       amount INTEGER NOT NULL,
       direction TEXT NOT NULL CHECK (direction IN ('debit','credit')),
       category TEXT NOT NULL,
       category_overridden INTEGER NOT NULL DEFAULT 0,
-      txn_hash TEXT NOT NULL UNIQUE
+      txn_hash TEXT UNIQUE
     );
     CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS budgets (category TEXT PRIMARY KEY, amount INTEGER NOT NULL);
   `);
 
+  // Migrate single-account databases: give existing rows a default account and
+  // rebuild transactions (statement_id/txn_hash become nullable for manual rows).
+  const stmtCols = (db.pragma("table_info(statements)") as { name: string }[]).map((c) => c.name);
+  if (!stmtCols.includes("account_id")) {
+    db.transaction(() => {
+      const bank = (db.prepare("SELECT bank_name FROM statements ORDER BY id DESC LIMIT 1").get() as { bank_name: string | null } | undefined)
+        ?.bank_name;
+      const accountId = Number(db.prepare("INSERT INTO accounts (name) VALUES (?)").run(bank ?? "Main").lastInsertRowid);
+      db.exec("ALTER TABLE statements ADD COLUMN account_id INTEGER REFERENCES accounts(id)");
+      db.prepare("UPDATE statements SET account_id = ?").run(accountId);
+      db.exec(`
+        CREATE TABLE transactions_new (
+          id INTEGER PRIMARY KEY,
+          statement_id INTEGER REFERENCES statements(id) ON DELETE CASCADE,
+          account_id INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+          date TEXT NOT NULL,
+          description TEXT NOT NULL,
+          amount INTEGER NOT NULL,
+          direction TEXT NOT NULL CHECK (direction IN ('debit','credit')),
+          category TEXT NOT NULL,
+          category_overridden INTEGER NOT NULL DEFAULT 0,
+          txn_hash TEXT UNIQUE
+        );
+        INSERT INTO transactions_new (id, statement_id, account_id, date, description, amount, direction, category, category_overridden, txn_hash)
+          SELECT id, statement_id, ${accountId}, date, description, amount, direction, category, category_overridden, txn_hash FROM transactions;
+        DROP TABLE transactions;
+        ALTER TABLE transactions_new RENAME TO transactions;
+      `);
+    })();
+  }
+  db.pragma("foreign_keys = ON"); // ON DELETE CASCADE needs this in SQLite; after migration so the rebuild can drop freely
+
   const insertStatementStmt = db.prepare(
-    `INSERT INTO statements (filename, file_hash, bank_name, currency, period_start, period_end, closing_balance)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`
+    `INSERT INTO statements (filename, file_hash, bank_name, currency, period_start, period_end, closing_balance, account_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
   );
   const insertTxnStmt = db.prepare(
-    `INSERT OR IGNORE INTO transactions (statement_id, date, description, amount, direction, category, txn_hash)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`
+    `INSERT OR IGNORE INTO transactions (statement_id, account_id, date, description, amount, direction, category, category_overridden, txn_hash)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
   );
+  const selectTxns = "SELECT t.*, a.name AS account FROM transactions t JOIN accounts a ON a.id = t.account_id";
 
   const store = {
     raw: db,
+
+    accounts(): Account[] {
+      return db.prepare("SELECT id, name, kind FROM accounts ORDER BY id").all() as Account[];
+    },
+
+    findOrCreateAccount(name: string, kind: Account["kind"] = "checking"): number {
+      db.prepare("INSERT OR IGNORE INTO accounts (name, kind) VALUES (?, ?)").run(name, kind);
+      return (db.prepare("SELECT id FROM accounts WHERE name = ?").get(name) as { id: number }).id;
+    },
+
+    /** The account picked in the header switcher; undefined means "all accounts". */
+    selectedAccount(): number | undefined {
+      const id = Number(store.getSetting("account"));
+      return Number.isInteger(id) && store.accounts().some((a) => a.id === id) ? id : undefined;
+    },
 
     hasStatement(fileHash: string): boolean {
       return !!db.prepare("SELECT 1 FROM statements WHERE file_hash = ?").get(fileHash);
     },
 
-    insertStatement(extraction: Extraction, filename: string, fileHash: string): { statementId: number; inserted: number; skipped: number } {
+    insertStatement(
+      extraction: Extraction,
+      filename: string,
+      fileHash: string,
+      accountId?: number
+    ): { statementId: number; inserted: number; skipped: number } {
       const run = db.transaction(() => {
+        const account = accountId ?? store.findOrCreateAccount(extraction.bank_name ?? "Main");
         const res = insertStatementStmt.run(
           filename,
           fileHash,
@@ -123,19 +214,22 @@ export function createDb(file: string) {
           extraction.currency.toUpperCase(),
           extraction.period_start,
           extraction.period_end,
-          extraction.closing_balance === null ? null : toMinor(extraction.closing_balance)
+          extraction.closing_balance === null ? null : toMinor(extraction.closing_balance),
+          account
         );
         const statementId = Number(res.lastInsertRowid);
+        const rules = store.rules();
         let inserted = 0;
         // Legit same-day identical repeats (two identical orders) get an occurrence
         // number, so dedup only bites across overlapping statement uploads.
         const seen = new Map<string, number>();
         for (const t of extraction.transactions) {
           const amount = toMinor(t.amount);
-          const key = `${t.date}|${t.description}|${amount}|${t.direction}`;
+          const key = `${account}|${t.date}|${t.description}|${amount}|${t.direction}`;
           const n = (seen.get(key) ?? 0) + 1;
           seen.set(key, n);
-          const r = insertTxnStmt.run(statementId, t.date, t.description, amount, t.direction, t.category, txnHash(`${key}|${n}`));
+          const category = rules.get(normalizeDesc(t.description)) ?? t.category;
+          const r = insertTxnStmt.run(statementId, account, t.date, t.description, amount, t.direction, category, 0, txnHash(`${key}|${n}`));
           inserted += r.changes;
         }
         return { statementId, inserted, skipped: extraction.transactions.length - inserted };
@@ -143,12 +237,17 @@ export function createDb(file: string) {
       return run();
     },
 
+    rules(): Map<string, Category> {
+      const rows = db.prepare("SELECT matcher, category FROM rules").all() as { matcher: string; category: Category }[];
+      return new Map(rows.map((r) => [r.matcher, r.category]));
+    },
+
     // Uncategorized debits, each with a category guess voted by already-tagged
     // transactions from the same normalized merchant (null when no match).
     ambiguous(): (TransactionRow & { suggestion: Category | null })[] {
       const rows = db
         .prepare(
-          "SELECT * FROM transactions WHERE direction = 'debit' AND category = 'Other' AND category_overridden = 0 ORDER BY date DESC, id DESC"
+          `${selectTxns} WHERE direction = 'debit' AND category = 'Other' AND category_overridden = 0 ORDER BY date DESC, t.id DESC`
         )
         .all() as TransactionRow[];
       if (rows.length === 0) return [];
@@ -177,31 +276,39 @@ export function createDb(file: string) {
       );
     },
 
-    monthlySpend(): { month: string; total: number }[] {
+    monthlySpend(accountId?: number): { month: string; total: number }[] {
       const nonSpend = NON_SPEND_CATEGORIES.map(() => "?").join(",");
       return db
         .prepare(
           `SELECT substr(date,1,7) AS month, SUM(amount) AS total FROM transactions
-           WHERE direction = 'debit' AND category NOT IN (${nonSpend})
+           WHERE direction = 'debit' AND category NOT IN (${nonSpend})${accFilter(accountId)}
            GROUP BY month ORDER BY month`
         )
         .all(...NON_SPEND_CATEGORIES) as { month: string; total: number }[];
     },
 
-    months(): string[] {
-      return (db.prepare("SELECT DISTINCT substr(date, 1, 7) AS m FROM transactions ORDER BY m DESC").all() as { m: string }[]).map((r) => r.m);
+    months(accountId?: number): string[] {
+      return (
+        db
+          .prepare(`SELECT DISTINCT substr(date, 1, 7) AS m FROM transactions WHERE 1=1${accFilter(accountId)} ORDER BY m DESC`)
+          .all() as { m: string }[]
+      ).map((r) => r.m);
     },
 
-    transactions(month: string): TransactionRow[] {
+    transactions(month: string, accountId?: number): TransactionRow[] {
       return db
-        .prepare("SELECT * FROM transactions WHERE substr(date, 1, 7) = ? ORDER BY date DESC, id DESC")
+        .prepare(`${selectTxns} WHERE substr(date, 1, 7) = ?${accFilter(accountId, "t.account_id")} ORDER BY date DESC, t.id DESC`)
         .all(month) as TransactionRow[];
+    },
+
+    transaction(id: number): TransactionRow | undefined {
+      return db.prepare(`${selectTxns} WHERE t.id = ?`).get(id) as TransactionRow | undefined;
     },
 
     // ponytail: LIKE substring over description; FTS if it ever gets slow.
     searchTransactions(q: string): TransactionRow[] {
       return db
-        .prepare("SELECT * FROM transactions WHERE description LIKE '%' || ? || '%' COLLATE NOCASE ORDER BY date DESC, id DESC LIMIT 200")
+        .prepare(`${selectTxns} WHERE description LIKE '%' || ? || '%' COLLATE NOCASE ORDER BY date DESC, t.id DESC LIMIT 200`)
         .all(q) as TransactionRow[];
     },
 
@@ -214,25 +321,26 @@ export function createDb(file: string) {
         .get(q) as { count: number; total: number };
     },
 
-    summary(month: string): Summary {
+    summary(month: string, accountId?: number): Summary {
       const nonSpend = NON_SPEND_CATEGORIES.map(() => "?").join(",");
+      const acc = accFilter(accountId);
       const spent = (db
-        .prepare(`SELECT COALESCE(SUM(amount), 0) AS v FROM transactions WHERE substr(date,1,7) = ? AND direction = 'debit' AND category NOT IN (${nonSpend})`)
+        .prepare(`SELECT COALESCE(SUM(amount), 0) AS v FROM transactions WHERE substr(date,1,7) = ? AND direction = 'debit' AND category NOT IN (${nonSpend})${acc}`)
         .get(month, ...NON_SPEND_CATEGORIES) as { v: number }).v;
       const income = (db
-        .prepare("SELECT COALESCE(SUM(amount), 0) AS v FROM transactions WHERE substr(date,1,7) = ? AND direction = 'credit'")
+        .prepare(`SELECT COALESCE(SUM(amount), 0) AS v FROM transactions WHERE substr(date,1,7) = ? AND direction = 'credit'${acc}`)
         .get(month) as { v: number }).v;
       const byCategory = db
         .prepare(
           `SELECT category, SUM(amount) AS total FROM transactions
-           WHERE substr(date,1,7) = ? AND direction = 'debit' AND category NOT IN (${nonSpend})
+           WHERE substr(date,1,7) = ? AND direction = 'debit' AND category NOT IN (${nonSpend})${acc}
            GROUP BY category ORDER BY total DESC`
         )
         .all(month, ...NON_SPEND_CATEGORIES) as Summary["byCategory"];
       const byDay = db
         .prepare(
           `SELECT date, SUM(amount) AS total FROM transactions
-           WHERE substr(date,1,7) = ? AND direction = 'debit' AND category NOT IN (${nonSpend})
+           WHERE substr(date,1,7) = ? AND direction = 'debit' AND category NOT IN (${nonSpend})${acc}
            GROUP BY date ORDER BY date`
         )
         .all(month, ...NON_SPEND_CATEGORIES) as Summary["byDay"];
@@ -240,9 +348,9 @@ export function createDb(file: string) {
     },
 
     // Merchants charged ≥3 times at a steady gap (weekly/monthly/yearly) and steady amount (±20% of median).
-    recurring(): Recurring[] {
+    recurring(accountId?: number): Recurring[] {
       const rows = db
-        .prepare("SELECT date, description, amount, category FROM transactions WHERE direction = 'debit' ORDER BY date, id")
+        .prepare(`SELECT date, description, amount, category FROM transactions WHERE direction = 'debit'${accFilter(accountId)} ORDER BY date, id`)
         .all() as { date: string; description: string; amount: number; category: Category }[];
       const groups = new Map<string, typeof rows>();
       for (const r of rows) {
@@ -275,8 +383,88 @@ export function createDb(file: string) {
       return out.sort((a, b) => b.amount - a.amount);
     },
 
-    setCategory(id: number, category: Category): void {
-      db.prepare("UPDATE transactions SET category = ?, category_overridden = 1 WHERE id = ?").run(category, id);
+    /**
+     * Recategorize one transaction. With `remember`, save a rule for the merchant
+     * (applied to future uploads) and retroactively recategorize every past
+     * transaction from the same merchant that wasn't manually overridden.
+     */
+    setCategory(id: number, category: Category, remember = false): void {
+      const target = db.prepare("SELECT description FROM transactions WHERE id = ?").get(id) as { description: string } | undefined;
+      if (!target) return;
+      db.transaction(() => {
+        db.prepare("UPDATE transactions SET category = ?, category_overridden = 1 WHERE id = ?").run(category, id);
+        if (!remember) return;
+        const matcher = normalizeDesc(target.description);
+        if (!matcher) return;
+        db.prepare("INSERT INTO rules (matcher, category) VALUES (?, ?) ON CONFLICT(matcher) DO UPDATE SET category = excluded.category").run(
+          matcher,
+          category
+        );
+        // Rule-driven rows keep category_overridden = 0 so a later rule change re-applies to them.
+        const others = db
+          .prepare("SELECT id, description FROM transactions WHERE category_overridden = 0 AND id != ?")
+          .all(id) as { id: number; description: string }[];
+        const update = db.prepare("UPDATE transactions SET category = ? WHERE id = ?");
+        for (const o of others) if (normalizeDesc(o.description) === matcher) update.run(category, o.id);
+      })();
+    },
+
+    addTransaction(t: {
+      accountId: number;
+      date: string;
+      description: string;
+      amount: number; // minor units
+      direction: "debit" | "credit";
+      category: Category;
+    }): number {
+      const res = insertTxnStmt.run(null, t.accountId, t.date, t.description, t.amount, t.direction, t.category, 1, null);
+      return Number(res.lastInsertRowid);
+    },
+
+    updateTransaction(
+      id: number,
+      patch: Partial<{ date: string; description: string; amount: number; direction: "debit" | "credit"; category: Category }>
+    ): void {
+      const sets: string[] = [];
+      const vals: (string | number)[] = [];
+      for (const key of ["date", "description", "amount", "direction"] as const) {
+        if (patch[key] !== undefined) {
+          sets.push(`${key} = ?`);
+          vals.push(patch[key]);
+        }
+      }
+      if (patch.category !== undefined) {
+        sets.push("category = ?", "category_overridden = 1");
+        vals.push(patch.category);
+      }
+      if (sets.length === 0) return;
+      db.prepare(`UPDATE transactions SET ${sets.join(", ")} WHERE id = ?`).run(...vals, id);
+    },
+
+    deleteTransaction(id: number): void {
+      db.prepare("DELETE FROM transactions WHERE id = ?").run(id);
+    },
+
+    /**
+     * Replace one transaction with parts that sum to its amount, each with its
+     * own category. The first part inherits the txn_hash so statement dedup
+     * still recognizes the original on overlapping uploads.
+     */
+    splitTransaction(id: number, parts: { amount: number; category: Category }[]): void {
+      const t = db.prepare("SELECT * FROM transactions WHERE id = ?").get(id) as
+        | (TransactionRow & { txn_hash: string | null })
+        | undefined;
+      if (!t) throw new Error("Transaction not found");
+      if (parts.length < 2) throw new Error("A split needs at least 2 parts");
+      const sum = parts.reduce((acc, p) => acc + p.amount, 0);
+      if (sum !== t.amount) throw new Error(`Parts sum to ${sum} but the transaction is ${t.amount}`);
+      if (parts.some((p) => p.amount <= 0)) throw new Error("Each part must be positive");
+      db.transaction(() => {
+        db.prepare("DELETE FROM transactions WHERE id = ?").run(id);
+        parts.forEach((p, i) => {
+          insertTxnStmt.run(t.statement_id, t.account_id, t.date, t.description, p.amount, t.direction, p.category, 1, i === 0 ? t.txn_hash : null);
+        });
+      })();
     },
 
     getSetting(key: string): string | null {
@@ -309,39 +497,57 @@ export function createDb(file: string) {
         .all(month) as Budget[];
     },
 
-    // "Whichever is fresher": manual entry wins if made on/after the latest statement's period end.
-    balance(): Balance | null {
+    /**
+     * Per account: the latest statement closing balance. Across all accounts:
+     * their sum — with "whichever is fresher" semantics for the manual entry
+     * (manual wins if made on/after the latest statement's period end).
+     */
+    balance(accountId?: number): Balance | null {
+      const latestPerAccount = db
+        .prepare(
+          `SELECT account_id, closing_balance, MAX(period_end) AS period_end FROM statements
+           WHERE closing_balance IS NOT NULL${accFilter(accountId)} GROUP BY account_id`
+        )
+        .all() as { closing_balance: number; period_end: string }[];
+      const fromStatements =
+        latestPerAccount.length > 0
+          ? {
+              amount: latestPerAccount.reduce((acc, r) => acc + r.closing_balance, 0),
+              asOf: latestPerAccount.map((r) => r.period_end).sort().at(-1)!,
+              source: "statement" as const,
+            }
+          : null;
+      if (accountId !== undefined) return fromStatements; // manual entry is a whole-picture number, not per-account
       const manual = store.getSetting("manual_balance");
       const manualAt = store.getSetting("manual_balance_at");
-      const latest = db
-        .prepare("SELECT closing_balance, period_end FROM statements WHERE closing_balance IS NOT NULL ORDER BY period_end DESC LIMIT 1")
-        .get() as { closing_balance: number; period_end: string } | undefined;
-      if (manual !== null && manualAt !== null && (!latest || manualAt >= latest.period_end)) {
+      if (manual !== null && manualAt !== null && (!fromStatements || manualAt >= fromStatements.asOf)) {
         return { amount: Number(manual), asOf: manualAt, source: "manual" };
       }
-      if (latest) return { amount: latest.closing_balance, asOf: latest.period_end, source: "statement" };
-      return null;
+      return fromStatements;
     },
 
     // Statement closing balances over time, plus the manual entry when it is the freshest point.
-    balanceHistory(): { date: string; amount: number }[] {
+    balanceHistory(accountId?: number): { date: string; amount: number }[] {
+      const acc = accFilter(accountId);
       const points = db
-        .prepare("SELECT period_end AS date, closing_balance AS amount FROM statements WHERE closing_balance IS NOT NULL ORDER BY period_end")
+        .prepare(`SELECT period_end AS date, closing_balance AS amount FROM statements WHERE closing_balance IS NOT NULL${acc} ORDER BY period_end`)
         .all() as { date: string; amount: number }[];
-      const manual = store.getSetting("manual_balance");
-      const manualAt = store.getSetting("manual_balance_at");
-      if (manual !== null && manualAt !== null && (points.length === 0 || manualAt > points[points.length - 1].date)) {
-        points.push({ date: manualAt, amount: Number(manual) });
+      if (accountId === undefined) {
+        const manual = store.getSetting("manual_balance");
+        const manualAt = store.getSetting("manual_balance_at");
+        if (manual !== null && manualAt !== null && (points.length === 0 || manualAt > points[points.length - 1].date)) {
+          points.push({ date: manualAt, amount: Number(manual) });
+        }
       }
       if (points.length !== 1) return points;
       // One lone anchor draws no line: reconstruct earlier month-end balances
       // by walking net cash flow (all directions, all categories) back from it.
       const anchor = points[0];
       const flow = db.prepare(
-        "SELECT COALESCE(SUM(CASE WHEN direction = 'credit' THEN amount ELSE -amount END), 0) AS v FROM transactions WHERE date > ? AND date <= ?"
+        `SELECT COALESCE(SUM(CASE WHEN direction = 'credit' THEN amount ELSE -amount END), 0) AS v FROM transactions WHERE date > ? AND date <= ?${acc}`
       );
       const derived: { date: string; amount: number }[] = [];
-      for (const m of store.months().slice().reverse()) {
+      for (const m of store.months(accountId).slice().reverse()) {
         const [y, mo] = m.split("-").map(Number);
         const end = `${m}-${String(new Date(y, mo, 0).getDate()).padStart(2, "0")}`;
         if (end >= anchor.date) continue;
@@ -349,6 +555,28 @@ export function createDb(file: string) {
         derived.push({ date: end, amount: anchor.amount - net });
       }
       return [...derived, ...points];
+    },
+
+    /** All demo statements share the 'demo-' file_hash prefix; clearing removes them and any account left empty. */
+    clearDemo(): void {
+      db.transaction(() => {
+        db.prepare("DELETE FROM statements WHERE file_hash LIKE 'demo-%'").run();
+        db.prepare(
+          `DELETE FROM accounts WHERE id NOT IN (SELECT DISTINCT account_id FROM transactions)
+           AND id NOT IN (SELECT DISTINCT account_id FROM statements WHERE account_id IS NOT NULL)`
+        ).run();
+        db.prepare("DELETE FROM settings WHERE key = 'demo'").run();
+      })();
+    },
+
+    exportRows(): ExportRow[] {
+      return db
+        .prepare(
+          `SELECT t.date, t.description, t.amount, t.direction, t.category, a.name AS account, s.filename AS statement
+           FROM transactions t JOIN accounts a ON a.id = t.account_id LEFT JOIN statements s ON s.id = t.statement_id
+           ORDER BY t.date, t.id`
+        )
+        .all() as ExportRow[];
     },
   };
   return store;
