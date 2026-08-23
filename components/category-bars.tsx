@@ -3,10 +3,22 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { categoryColor } from "@/lib/colors";
-import { formatMoney } from "@/lib/format";
+import { delta, formatMoney } from "@/lib/format";
+import { Delta } from "@/components/delta";
 import type { Budget, Summary } from "@/lib/db";
 
-export function CategoryBars({ data, budgets, currency }: { data: Summary["byCategory"]; budgets: Budget[]; currency: string }) {
+export function CategoryBars({
+  data,
+  budgets,
+  prev = {},
+  currency,
+}: {
+  data: Summary["byCategory"];
+  budgets: Budget[];
+  /** previous month's totals by category; rows that moved >10% get a ↑/↓ suffix */
+  prev?: Record<string, number>;
+  currency: string;
+}) {
   const router = useRouter();
   const [editing, setEditing] = useState<string | null>(null);
   const [value, setValue] = useState("");
@@ -38,7 +50,7 @@ export function CategoryBars({ data, budgets, currency }: { data: Summary["byCat
         const ratio = limit ? total / limit : total / max;
         const color = !limit ? categoryColor(category) : ratio >= 1 ? "#dc2626" : ratio >= 0.8 ? "#d97706" : categoryColor(category);
         return (
-          <li key={category} className="grid grid-cols-[8rem_1fr_auto] items-center gap-3 text-sm">
+          <li key={category} className="grid grid-cols-[8rem_1fr_auto_3rem] items-center gap-3 text-sm">
             <span className="truncate text-zinc-600 dark:text-zinc-400">{category}</span>
             <div className={`relative h-2 ${limit ? "rounded-r-[4px] bg-zinc-100 dark:bg-zinc-800" : ""}`}>
               <div
@@ -73,6 +85,9 @@ export function CategoryBars({ data, budgets, currency }: { data: Summary["byCat
                 {limit && <span className="text-zinc-400"> / {formatMoney(limit, currency)}</span>}
               </button>
             )}
+            <span className="text-right">
+              {Math.abs(delta(total, prev[category] ?? 0) ?? 0) > 10 && <Delta current={total} prev={prev[category]} />}
+            </span>
           </li>
         );
       })}
