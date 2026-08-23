@@ -81,4 +81,22 @@ describe("store", () => {
     expect(b.source).toBe("manual");
     expect(b.amount).toBe(toMinor(3900));
   });
+
+  it("budgets join monthly spend with limits and clear on null", () => {
+    const db = createDb(":memory:");
+    insertFixture(db);
+    const groceries = db.summary("2026-07").byCategory.find((c) => c.category === "Groceries")!.total;
+    db.setBudget("Groceries", toMinor(500));
+    db.setBudget("Travel", toMinor(200)); // no Travel spend this month
+    expect(db.budgets("2026-07")).toEqual([
+      { category: "Groceries", limit: toMinor(500), spent: groceries },
+      { category: "Travel", limit: toMinor(200), spent: 0 },
+    ]);
+    db.setBudget("Groceries", toMinor(600));
+    expect(db.budgets("2026-07")[0].limit).toBe(toMinor(600));
+    db.setBudget("Groceries", null);
+    db.setBudget("Travel", null);
+    expect(db.budgets("2026-07")).toEqual([]);
+    expect(() => db.setBudget("Transfers", toMinor(1))).toThrow();
+  });
 });

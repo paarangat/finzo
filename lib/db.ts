@@ -24,6 +24,12 @@ export interface Summary {
   currency: string;
 }
 
+export interface Budget {
+  category: Category;
+  limit: number; // minor units, monthly
+  spent: number; // minor units, for the requested month
+}
+
 export interface Balance {
   amount: number;
   asOf: string;
@@ -63,6 +69,7 @@ export function createDb(file: string) {
       txn_hash TEXT NOT NULL UNIQUE
     );
     CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+    CREATE TABLE IF NOT EXISTS budgets (category TEXT PRIMARY KEY, amount INTEGER NOT NULL);
   `);
 
   const insertStatementStmt = db.prepare(
@@ -174,6 +181,23 @@ export function createDb(file: string) {
     setManualBalance(amountMinor: number): void {
       store.setSetting("manual_balance", String(amountMinor));
       store.setSetting("manual_balance_at", new Date().toISOString().slice(0, 10));
+    },
+
+    setBudget(category: Category, amountMinor: number | null): void {
+      if (NON_SPEND_CATEGORIES.includes(category)) throw new Error(`Cannot budget ${category}`);
+      if (amountMinor === null) db.prepare("DELETE FROM budgets WHERE category = ?").run(category);
+      else db.prepare("INSERT INTO budgets (category, amount) VALUES (?, ?) ON CONFLICT(category) DO UPDATE SET amount = excluded.amount").run(category, amountMinor);
+    },
+
+    budgets(month: string): Budget[] {
+      return db
+        .prepare(
+          `SELECT b.category, b.amount AS "limit",
+                  COALESCE((SELECT SUM(t.amount) FROM transactions t
+                            WHERE t.category = b.category AND t.direction = 'debit' AND substr(t.date,1,7) = ?), 0) AS spent
+           FROM budgets b ORDER BY b.category`
+        )
+        .all(month) as Budget[];
     },
 
     // "Whichever is fresher": manual entry wins if made on/after the latest statement's period end.
