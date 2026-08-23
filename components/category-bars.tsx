@@ -77,7 +77,7 @@ export function CategoryBars({
                   setValue(limit ? String(limit / 100) : "");
                   setEditing(category);
                 }}
-                className="rounded-md px-1.5 py-0.5 text-left font-mono text-xs tabular-nums text-zinc-500 transition-colors hover:bg-zinc-100 dark:hover:bg-zinc-800"
+                className="rounded-md px-1.5 py-0.5 text-left font-mono text-xs tabular-nums text-zinc-500 underline decoration-zinc-300 decoration-dashed underline-offset-4 transition-colors hover:bg-zinc-100 hover:text-foreground dark:decoration-zinc-600 dark:hover:bg-zinc-800"
                 aria-label={`Set monthly limit for ${category}`}
                 title="Click to set a monthly limit"
               >
