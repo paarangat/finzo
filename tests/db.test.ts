@@ -71,6 +71,16 @@ describe("store", () => {
     expect(db.summary("2026-07").byCategory.find((c) => c.category === "Subscriptions")!.total).toBe(toMinor(11.99));
   });
 
+  it("searches descriptions case-insensitively and totals debits only", () => {
+    const db = createDb(":memory:");
+    insertFixture(db);
+    const hits = db.searchTransactions("trailhead");
+    expect(hits.map((t) => t.description).sort()).toEqual(["Refund - Trailhead Outfitters", "Trailhead Outfitters"]);
+    expect(db.merchantTotal("TRAILHEAD")).toEqual({ count: 1, total: toMinor(137.62) });
+    expect(db.merchantTotal("whole harvest")).toEqual({ count: 3, total: toMinor(86.34 + 102.11 + 77.48) });
+    expect(db.searchTransactions("nope")).toEqual([]);
+  });
+
   it("balance prefers the statement until a newer manual entry exists", () => {
     const db = createDb(":memory:");
     expect(db.balance()).toBeNull();

@@ -131,6 +131,22 @@ export function createDb(file: string) {
         .all(month) as TransactionRow[];
     },
 
+    // ponytail: LIKE substring over description; FTS if it ever gets slow.
+    searchTransactions(q: string): TransactionRow[] {
+      return db
+        .prepare("SELECT * FROM transactions WHERE description LIKE '%' || ? || '%' COLLATE NOCASE ORDER BY date DESC, id DESC LIMIT 200")
+        .all(q) as TransactionRow[];
+    },
+
+    merchantTotal(q: string): { count: number; total: number } {
+      return db
+        .prepare(
+          `SELECT COUNT(*) AS count, COALESCE(SUM(amount), 0) AS total FROM transactions
+           WHERE description LIKE '%' || ? || '%' COLLATE NOCASE AND direction = 'debit'`
+        )
+        .get(q) as { count: number; total: number };
+    },
+
     summary(month: string): Summary {
       const nonSpend = NON_SPEND_CATEGORIES.map(() => "?").join(",");
       const spent = (db
