@@ -26,9 +26,10 @@ export function TransactionsTable({
   }
 
   return (
-    <div className="overflow-x-auto">
+    <div className="overflow-x-auto md:overflow-x-visible">
       <table className="w-full text-sm">
-        <thead>
+        {/* sticky only at md+: a sticky thead can't escape the overflow-x container mobile needs */}
+        <thead className="md:sticky md:top-0 md:z-10 md:bg-background">
           <tr className="text-left text-xs text-zinc-500">
             <th className="py-2 pr-4 font-medium">Date</th>
             <th className="py-2 pr-4 font-medium">Description</th>
