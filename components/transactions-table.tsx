@@ -2,10 +2,18 @@
 
 import { useRouter } from "next/navigation";
 import { CATEGORIES } from "@/lib/categories";
-import { formatDay, formatMoney } from "@/lib/format";
+import { formatDate, formatDay, formatMoney } from "@/lib/format";
 import type { TransactionRow } from "@/lib/db";
 
-export function TransactionsTable({ transactions, currency }: { transactions: TransactionRow[]; currency: string }) {
+export function TransactionsTable({
+  transactions,
+  currency,
+  showYear = false,
+}: {
+  transactions: TransactionRow[];
+  currency: string;
+  showYear?: boolean;
+}) {
   const router = useRouter();
 
   async function recategorize(id: number, category: string) {
@@ -31,7 +39,7 @@ export function TransactionsTable({ transactions, currency }: { transactions: Tr
         <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800/60">
           {transactions.map((t) => (
             <tr key={t.id}>
-              <td className="whitespace-nowrap py-2.5 pr-4 font-mono text-xs text-zinc-500">{formatDay(t.date)}</td>
+              <td className="whitespace-nowrap py-2.5 pr-4 font-mono text-xs text-zinc-500">{showYear ? formatDate(t.date) : formatDay(t.date)}</td>
               <td className="max-w-75 truncate py-2.5 pr-4" title={t.description}>
                 {t.description}
               </td>
