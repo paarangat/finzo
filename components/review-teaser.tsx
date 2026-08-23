@@ -11,12 +11,12 @@ export function ReviewTeaser({ top, count, currency }: { top: ReviewCard; count:
         <div className="absolute inset-0 translate-x-2 rotate-4 rounded-xl border border-zinc-200 bg-background dark:border-zinc-800" />
         <div className="absolute inset-0 flex flex-col justify-between rounded-xl border border-zinc-300 bg-white p-3 shadow-sm dark:border-zinc-700 dark:bg-zinc-900">
           <div>
-            <p className="font-mono text-[10px] text-zinc-500">{formatDay(top.date)}</p>
+            <p className="font-mono text-[11px] text-zinc-500">{formatDay(top.date)}</p>
             <p className="truncate text-xs font-medium">{top.description}</p>
           </div>
           <div className="flex items-baseline justify-between">
             <span className="font-mono text-sm tabular-nums">{formatMoney(top.amount, currency)}</span>
-            {top.suggestion && <span className="text-[10px] font-medium text-accent">{top.suggestion}?</span>}
+            {top.suggestion && <span className="text-[11px] font-medium text-accent">{top.suggestion}?</span>}
           </div>
         </div>
       </div>

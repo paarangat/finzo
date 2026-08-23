@@ -22,7 +22,7 @@ export function MonthlyTrend({
           className="group flex h-full flex-1 flex-col items-center justify-end gap-1.5"
           aria-label={`${d.month}: ${formatMoney(d.total, currency)}`}
         >
-          <span className="font-mono text-[10px] tabular-nums text-zinc-500 opacity-0 transition-opacity group-hover:opacity-100">
+          <span className="font-mono text-xs tabular-nums text-zinc-500 opacity-0 transition-opacity group-hover:opacity-100">
             {formatMoney(d.total, currency)}
           </span>
           <div
