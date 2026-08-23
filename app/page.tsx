@@ -1,6 +1,7 @@
 import { getDb } from "@/lib/db";
 import { detectEngines, resolveEngine } from "@/lib/engines";
-import { formatMoney } from "@/lib/format";
+import { formatMoney, formatMonth } from "@/lib/format";
+import { Delta } from "@/components/delta";
 import { BalanceStat } from "@/components/balance-stat";
 import { BalanceSparkline } from "@/components/balance-sparkline";
 import { CategoryBars } from "@/components/category-bars";
@@ -54,6 +55,9 @@ export default async function Dashboard({ searchParams }: PageProps<"/">) {
 
   const month = typeof monthParam === "string" && months.includes(monthParam) ? monthParam : months[0];
   const summary = db.summary(month);
+  const prevMonth = months[months.indexOf(month) + 1];
+  const prev = prevMonth ? db.summary(prevMonth) : null;
+  const prevByCategory = Object.fromEntries(prev?.byCategory.map((c) => [c.category, c.total]) ?? []);
   const balance = db.balance();
   const ambiguous = db.ambiguous();
 
@@ -73,12 +77,14 @@ export default async function Dashboard({ searchParams }: PageProps<"/">) {
           <div>
             <p className="text-xs font-medium text-zinc-500">Spent this month</p>
             <p className="mt-1 font-mono text-2xl tabular-nums tracking-tight">{formatMoney(summary.spent, summary.currency)}</p>
+            {prev && <Delta current={summary.spent} prev={prev.spent} label={formatMonth(prevMonth)} className="mt-0.5 block" />}
           </div>
           <div>
             <p className="text-xs font-medium text-zinc-500">Income this month</p>
             <p className="mt-1 font-mono text-2xl tabular-nums tracking-tight text-accent">
               {formatMoney(summary.income, summary.currency)}
             </p>
+            {prev && <Delta current={summary.income} prev={prev.income} label={formatMonth(prevMonth)} goodWhenUp className="mt-0.5 block" />}
           </div>
         </section>
 
@@ -89,7 +95,7 @@ export default async function Dashboard({ searchParams }: PageProps<"/">) {
               <DonutChart data={summary.byCategory} spent={summary.spent} currency={summary.currency} />
             </div>
             <div className="lg:col-span-3">
-              <CategoryBars data={summary.byCategory} budgets={db.budgets(month)} currency={summary.currency} />
+              <CategoryBars data={summary.byCategory} budgets={db.budgets(month)} prev={prevByCategory} currency={summary.currency} />
             </div>
           </div>
         </section>
