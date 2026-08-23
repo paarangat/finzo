@@ -124,9 +124,12 @@ describe("store", () => {
       t("2026-07-02", "Random Shop", 20), // irregular gaps
       t("2026-07-10", "Random Shop", 20),
       t("2026-09-25", "Random Shop", 20),
-      t("2026-07-03", "Coffee Club", 5), // weekly
-      t("2026-07-10", "Coffee Club", 5),
-      t("2026-07-17", "Coffee Club", 5.2),
+      t("2026-09-19", "Coffee Club", 5), // weekly, still active
+      t("2026-09-26", "Coffee Club", 5),
+      t("2026-10-03", "Coffee Club", 5.2),
+      t("2026-06-01", "Old Box", 30), // monthly cadence but lapsed months ago
+      t("2026-07-01", "Old Box", 30),
+      t("2026-08-01", "Old Box", 30),
     ];
     db.insertStatement(extraction, "multi.pdf", "hash-1");
     const rec = db.recurring();
