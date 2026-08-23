@@ -55,7 +55,7 @@ export function CategoryBars({
             <div className={`relative h-2 ${limit ? "rounded-r-[4px] bg-zinc-100 dark:bg-zinc-800" : ""}`}>
               <div
                 className="h-full rounded-r-[4px]"
-                style={{ width: `${Math.min(Math.max(ratio * 100, 1), 100)}%`, background: color }}
+                style={{ width: `${Math.min(Math.max(ratio * 100, 1), 100)}%`, minWidth: "6px", background: color }}
               />
               {limit && <span aria-hidden className="absolute -top-1 right-0 h-4 w-px bg-zinc-400 dark:bg-zinc-500" />}
             </div>
