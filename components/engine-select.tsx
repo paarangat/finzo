@@ -9,7 +9,7 @@ export function EngineSelect({ current, available }: { current: EngineId; availa
   const router = useRouter();
   return (
     <label className="flex items-center gap-2 text-sm text-zinc-500">
-      Engine
+      <span className="max-sm:sr-only">Engine</span>
       <select
         value={current}
         onChange={async (e) => {

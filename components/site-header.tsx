@@ -28,7 +28,7 @@ export function SiteHeader({
   return (
     <header className="border-b border-zinc-200 dark:border-zinc-800">
       <AutoRefresh />
-      <div className="mx-auto flex h-14 max-w-5xl items-center gap-8 px-6">
+      <div className="mx-auto flex min-h-14 max-w-5xl flex-wrap items-center gap-x-6 gap-y-1 px-6 py-2">
         <Link href="/" className="text-lg font-semibold tracking-tight">
           finzo
         </Link>
@@ -48,7 +48,7 @@ export function SiteHeader({
             </Link>
           ))}
         </nav>
-        <div className="ml-auto flex items-center gap-4">
+        <div className="ml-auto flex items-center gap-3">
           <EngineSelect current={engine.id} available={available} />
           {showUpload && <Uploader variant="button" engineLabel={engine.label} />}
         </div>
