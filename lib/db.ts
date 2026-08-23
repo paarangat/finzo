@@ -34,6 +34,9 @@ export const toMinor = (n: number) => Math.round(n * 100);
 
 const txnHash = (key: string) => createHash("sha256").update(key).digest("hex");
 
+// "AMZN Mktp 1234" and "AMZN Mktp 9876" are the same merchant: drop digits/punctuation.
+const normalizeDesc = (d: string) => d.toLowerCase().replace(/[^a-z]+/g, " ").trim();
+
 export function createDb(file: string) {
   if (file !== ":memory:") mkdirSync(path.dirname(file), { recursive: true });
   const db = new Database(file);
@@ -110,6 +113,40 @@ export function createDb(file: string) {
       return run();
     },
 
+    // Uncategorized debits, each with a category guess voted by already-tagged
+    // transactions from the same normalized merchant (null when no match).
+    ambiguous(): (TransactionRow & { suggestion: Category | null })[] {
+      const rows = db
+        .prepare(
+          "SELECT * FROM transactions WHERE direction = 'debit' AND category = 'Other' AND category_overridden = 0 ORDER BY date DESC, id DESC"
+        )
+        .all() as TransactionRow[];
+      if (rows.length === 0) return [];
+      const tagged = db
+        .prepare("SELECT description, category FROM transactions WHERE category != 'Other'")
+        .all() as { description: string; category: Category }[];
+      const votes = new Map<string, Map<Category, number>>();
+      for (const t of tagged) {
+        const key = normalizeDesc(t.description);
+        if (!key) continue;
+        const m = votes.get(key) ?? new Map<Category, number>();
+        m.set(t.category, (m.get(t.category) ?? 0) + 1);
+        votes.set(key, m);
+      }
+      return rows.map((r) => {
+        const m = votes.get(normalizeDesc(r.description));
+        const suggestion = m ? [...m.entries()].sort((a, b) => b[1] - a[1])[0][0] : null;
+        return { ...r, suggestion };
+      });
+    },
+
+    currency(): string {
+      return (
+        (db.prepare("SELECT currency FROM statements ORDER BY uploaded_at DESC, id DESC LIMIT 1").get() as { currency: string } | undefined)
+          ?.currency ?? "USD"
+      );
+    },
+
     monthlySpend(): { month: string; total: number }[] {
       const nonSpend = NON_SPEND_CATEGORIES.map(() => "?").join(",");
       return db
@@ -153,10 +190,7 @@ export function createDb(file: string) {
            GROUP BY date ORDER BY date`
         )
         .all(month, ...NON_SPEND_CATEGORIES) as Summary["byDay"];
-      const currency =
-        (db.prepare("SELECT currency FROM statements ORDER BY uploaded_at DESC, id DESC LIMIT 1").get() as { currency: string } | undefined)
-          ?.currency ?? "USD";
-      return { spent, income, byCategory, byDay, currency };
+      return { spent, income, byCategory, byDay, currency: store.currency() };
     },
 
     setCategory(id: number, category: Category): void {
