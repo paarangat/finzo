@@ -9,13 +9,15 @@ import { DonutChart } from "@/components/donut-chart";
 import { MonthlyTrend } from "@/components/monthly-trend";
 import { EngineSelect } from "@/components/engine-select";
 import { MonthNav } from "@/components/month-nav";
+import { SearchBox } from "@/components/search-box";
 import { TransactionsTable } from "@/components/transactions-table";
 import { Uploader } from "@/components/uploader";
 
 export const dynamic = "force-dynamic";
 
 export default async function Dashboard({ searchParams }: PageProps<"/">) {
-  const { month: monthParam } = await searchParams;
+  const { month: monthParam, q: qParam } = await searchParams;
+  const q = typeof qParam === "string" ? qParam.trim() : "";
   const db = getDb();
   const months = db.months();
   const available = await detectEngines();
@@ -66,14 +68,42 @@ export default async function Dashboard({ searchParams }: PageProps<"/">) {
 
   const month = typeof monthParam === "string" && months.includes(monthParam) ? monthParam : months[0];
   const summary = db.summary(month);
-  const transactions = db.transactions(month);
   const balance = db.balance();
+
+  if (q) {
+    const hits = db.searchTransactions(q);
+    const { count, total } = db.merchantTotal(q);
+    return (
+      <div className="flex min-h-dvh flex-col">
+        {header}
+        <main className="mx-auto w-full max-w-5xl flex-1 space-y-10 px-6 py-8">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <SearchBox initial={q} />
+          </div>
+          <section className="space-y-4">
+            <p className="text-sm text-zinc-500">
+              {count} {count === 1 ? "transaction" : "transactions"} · {formatMoney(total, summary.currency)} spent
+              {hits.length === 200 && " · showing first 200"}
+            </p>
+            {hits.length === 0 ? (
+              <p className="text-sm text-zinc-500">No transactions match “{q}”.</p>
+            ) : (
+              <TransactionsTable transactions={hits} currency={summary.currency} showYear />
+            )}
+          </section>
+        </main>
+      </div>
+    );
+  }
+
+  const transactions = db.transactions(month);
 
   return (
     <div className="flex min-h-dvh flex-col">
       {header}
       <main className="mx-auto w-full max-w-5xl flex-1 space-y-10 px-6 py-8">
         <div className="flex flex-wrap items-center justify-between gap-4">
+          <SearchBox initial="" />
           <MonthNav months={months} current={month} />
         </div>
 
