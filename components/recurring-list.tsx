@@ -7,7 +7,8 @@ export function RecurringList({ data, currency }: { data: Recurring[]; currency:
   if (data.length === 0) {
     return <p className="text-sm text-zinc-500">No recurring charges detected yet. Upload a few months of statements.</p>;
   }
-  const monthly = data.reduce((acc, r) => acc + perMonth(r), 0);
+  const subs = data.filter((r) => r.category === "Subscriptions");
+  const monthly = subs.reduce((acc, r) => acc + perMonth(r), 0);
   return (
     <div>
       <ul className="divide-y divide-zinc-100 dark:divide-zinc-900">
@@ -33,9 +34,11 @@ export function RecurringList({ data, currency }: { data: Recurring[]; currency:
           </li>
         ))}
       </ul>
-      <p className="mt-3 border-t border-zinc-200 pt-3 text-xs text-zinc-500 dark:border-zinc-800">
-        ≈ <span className="font-mono tabular-nums">{formatMoney(Math.round(monthly), currency)}</span>/mo in subscriptions
-      </p>
+      {subs.length > 0 && (
+        <p className="mt-3 border-t border-zinc-200 pt-3 text-xs text-zinc-500 dark:border-zinc-800">
+          ≈ <span className="font-mono tabular-nums">{formatMoney(Math.round(monthly), currency)}</span>/mo in subscriptions
+        </p>
+      )}
     </div>
   );
 }

@@ -249,6 +249,7 @@ export function createDb(file: string) {
         const k = normalizeDesc(r.description);
         groups.set(k, [...(groups.get(k) ?? []), r]);
       }
+      const latest = rows.length ? Date.parse(rows[rows.length - 1].date) : 0;
       const out: Recurring[] = [];
       for (const g of groups.values()) {
         if (g.length < 3) continue;
@@ -256,6 +257,8 @@ export function createDb(file: string) {
         const gap = median(gaps);
         const cadence = CADENCES.find((c) => gap >= c.min && gap <= c.max);
         if (!cadence) continue;
+        // A charge last seen well past its cadence has lapsed — don't list it as active.
+        if (latest - Date.parse(g[g.length - 1].date) > cadence.max * 1.5 * DAY) continue;
         const amount = median(g.map((r) => r.amount));
         if (g.some((r) => Math.abs(r.amount - amount) > amount * 0.2)) continue;
         const [prev, last] = g.slice(-2);
