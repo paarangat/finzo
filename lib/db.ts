@@ -36,7 +36,30 @@ export interface Balance {
   source: "manual" | "statement";
 }
 
+export interface Recurring {
+  merchant: string;
+  category: Category;
+  cadence: "weekly" | "monthly" | "yearly";
+  amount: number; // median, minor units
+  lastDate: string;
+  count: number;
+  priceChanged: boolean;
+}
+
 export const toMinor = (n: number) => Math.round(n * 100);
+
+const median = (xs: number[]) => {
+  const s = [...xs].sort((a, b) => a - b);
+  const m = s.length >> 1;
+  return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
+};
+const DAY = 86_400_000;
+const CADENCES: { name: Recurring["cadence"]; min: number; max: number; perMonth: number }[] = [
+  { name: "weekly", min: 6, max: 8, perMonth: 52 / 12 },
+  { name: "monthly", min: 25, max: 35, perMonth: 1 },
+  { name: "yearly", min: 350, max: 380, perMonth: 1 / 12 },
+];
+export const perMonth = (r: Recurring) => r.amount * CADENCES.find((c) => c.name === r.cadence)!.perMonth;
 
 const txnHash = (key: string) => createHash("sha256").update(key).digest("hex");
 
@@ -198,6 +221,39 @@ export function createDb(file: string) {
         )
         .all(month, ...NON_SPEND_CATEGORIES) as Summary["byDay"];
       return { spent, income, byCategory, byDay, currency: store.currency() };
+    },
+
+    // Merchants charged ≥3 times at a steady gap (weekly/monthly/yearly) and steady amount (±20% of median).
+    recurring(): Recurring[] {
+      const rows = db
+        .prepare("SELECT date, description, amount, category FROM transactions WHERE direction = 'debit' ORDER BY date, id")
+        .all() as { date: string; description: string; amount: number; category: Category }[];
+      const groups = new Map<string, typeof rows>();
+      for (const r of rows) {
+        const k = normalizeDesc(r.description);
+        groups.set(k, [...(groups.get(k) ?? []), r]);
+      }
+      const out: Recurring[] = [];
+      for (const g of groups.values()) {
+        if (g.length < 3) continue;
+        const gaps = g.slice(1).map((r, i) => (Date.parse(r.date) - Date.parse(g[i].date)) / DAY);
+        const gap = median(gaps);
+        const cadence = CADENCES.find((c) => gap >= c.min && gap <= c.max);
+        if (!cadence) continue;
+        const amount = median(g.map((r) => r.amount));
+        if (g.some((r) => Math.abs(r.amount - amount) > amount * 0.2)) continue;
+        const [prev, last] = g.slice(-2);
+        out.push({
+          merchant: last.description,
+          category: last.category,
+          cadence: cadence.name,
+          amount,
+          lastDate: last.date,
+          count: g.length,
+          priceChanged: Math.abs(last.amount - prev.amount) > prev.amount * 0.05,
+        });
+      }
+      return out.sort((a, b) => b.amount - a.amount);
     },
 
     setCategory(id: number, category: Category): void {
