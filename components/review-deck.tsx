@@ -149,7 +149,7 @@ export function ReviewDeck({ deck, currency }: { deck: ReviewCard[]; currency: s
           <button
             key={c}
             onClick={() => !fly && tag(card.id, c, 1)}
-            className="rounded-full border border-zinc-200 px-3 py-1 text-xs text-zinc-600 transition-colors hover:border-accent hover:text-accent dark:border-zinc-800 dark:text-zinc-400"
+            className="min-h-11 rounded-full border border-zinc-200 px-4 text-xs text-zinc-600 transition-colors hover:border-accent hover:text-accent dark:border-zinc-800 dark:text-zinc-400"
           >
             {c}
           </button>

@@ -37,7 +37,7 @@ export function SiteHeader({
             <Link
               key={t.key}
               href={t.href}
-              className={t.key === active ? "font-medium" : "text-zinc-500 transition-colors hover:text-foreground"}
+              className={`py-2 ${t.key === active ? "font-medium" : "text-zinc-500 transition-colors hover:text-foreground"}`}
             >
               {t.label}
               {t.key === "review" && reviewCount > 0 && (
