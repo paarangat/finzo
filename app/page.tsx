@@ -1,46 +1,33 @@
-import { AutoRefresh } from "@/components/auto-refresh";
 import { getDb } from "@/lib/db";
 import { detectEngines, resolveEngine } from "@/lib/engines";
-import { formatMoney } from "@/lib/format";
+import { formatMoney, formatMonth } from "@/lib/format";
+import { Delta } from "@/components/delta";
 import { BalanceStat } from "@/components/balance-stat";
+import { BalanceSparkline } from "@/components/balance-sparkline";
 import { CategoryBars } from "@/components/category-bars";
 import { DailyChart } from "@/components/daily-chart";
 import { DonutChart } from "@/components/donut-chart";
 import { MonthlyTrend } from "@/components/monthly-trend";
-import { EngineSelect } from "@/components/engine-select";
+import { RecurringList } from "@/components/recurring-list";
 import { MonthNav } from "@/components/month-nav";
-import { SearchBox } from "@/components/search-box";
-import { TransactionsTable } from "@/components/transactions-table";
+import { ReviewTeaser } from "@/components/review-teaser";
+import { SiteHeader } from "@/components/site-header";
 import { Uploader } from "@/components/uploader";
 
 export const dynamic = "force-dynamic";
 
 export default async function Dashboard({ searchParams }: PageProps<"/">) {
-  const { month: monthParam, q: qParam } = await searchParams;
-  const q = typeof qParam === "string" ? qParam.trim() : "";
+  const { month: monthParam } = await searchParams;
   const db = getDb();
   const months = db.months();
   const available = await detectEngines();
   const engine = resolveEngine(db.getSetting("engine"));
   const noCli = !available.includes("claude") && !available.includes("codex");
 
-  const header = (
-    <header className="border-b border-zinc-200 dark:border-zinc-800">
-      <AutoRefresh />
-      <div className="mx-auto flex h-14 max-w-5xl items-center justify-between px-6">
-        <span className="text-lg font-semibold tracking-tight">finzo</span>
-        <div className="flex items-center gap-4">
-          <EngineSelect current={engine.id} available={available} />
-          {months.length > 0 && <Uploader variant="button" engineLabel={engine.label} />}
-        </div>
-      </div>
-    </header>
-  );
-
   if (months.length === 0) {
     return (
       <div className="flex min-h-dvh flex-col">
-        {header}
+        <SiteHeader active="overview" engine={engine} available={available} showUpload={false} />
         <main className="flex flex-1 flex-col items-center justify-center gap-6 px-6 py-16">
           <div className="max-w-lg text-center">
             <h1 className="text-2xl font-semibold tracking-tight">Track your spending in minutes</h1>
@@ -68,56 +55,36 @@ export default async function Dashboard({ searchParams }: PageProps<"/">) {
 
   const month = typeof monthParam === "string" && months.includes(monthParam) ? monthParam : months[0];
   const summary = db.summary(month);
+  const prevMonth = months[months.indexOf(month) + 1];
+  const prev = prevMonth ? db.summary(prevMonth) : null;
+  const prevByCategory = Object.fromEntries(prev?.byCategory.map((c) => [c.category, c.total]) ?? []);
   const balance = db.balance();
-
-  if (q) {
-    const hits = db.searchTransactions(q);
-    const { count, total } = db.merchantTotal(q);
-    return (
-      <div className="flex min-h-dvh flex-col">
-        {header}
-        <main className="mx-auto w-full max-w-5xl flex-1 space-y-10 px-6 py-8">
-          <div className="flex flex-wrap items-center justify-between gap-4">
-            <SearchBox initial={q} />
-          </div>
-          <section className="space-y-4">
-            <p className="text-sm text-zinc-500">
-              {count} {count === 1 ? "transaction" : "transactions"} · {formatMoney(total, summary.currency)} spent
-              {hits.length === 200 && " · showing first 200"}
-            </p>
-            {hits.length === 0 ? (
-              <p className="text-sm text-zinc-500">No transactions match “{q}”.</p>
-            ) : (
-              <TransactionsTable transactions={hits} currency={summary.currency} showYear />
-            )}
-          </section>
-        </main>
-      </div>
-    );
-  }
-
-  const transactions = db.transactions(month);
+  const ambiguous = db.ambiguous();
 
   return (
     <div className="flex min-h-dvh flex-col">
-      {header}
+      <SiteHeader active="overview" reviewCount={ambiguous.length} engine={engine} available={available} showUpload />
       <main className="mx-auto w-full max-w-5xl flex-1 space-y-10 px-6 py-8">
         <div className="flex flex-wrap items-center justify-between gap-4">
-          <SearchBox initial="" />
           <MonthNav months={months} current={month} />
         </div>
 
         <section className="grid gap-8 sm:grid-cols-3">
-          <BalanceStat balance={balance} currency={summary.currency} />
+          <div>
+            <BalanceStat balance={balance} currency={summary.currency} />
+            <BalanceSparkline data={db.balanceHistory()} currency={summary.currency} />
+          </div>
           <div>
             <p className="text-xs font-medium text-zinc-500">Spent this month</p>
             <p className="mt-1 font-mono text-2xl tabular-nums tracking-tight">{formatMoney(summary.spent, summary.currency)}</p>
+            {prev && <Delta current={summary.spent} prev={prev.spent} label={formatMonth(prevMonth)} className="mt-0.5 block" />}
           </div>
           <div>
             <p className="text-xs font-medium text-zinc-500">Income this month</p>
             <p className="mt-1 font-mono text-2xl tabular-nums tracking-tight text-accent">
               {formatMoney(summary.income, summary.currency)}
             </p>
+            {prev && <Delta current={summary.income} prev={prev.income} label={formatMonth(prevMonth)} goodWhenUp className="mt-0.5 block" />}
           </div>
         </section>
 
@@ -128,7 +95,7 @@ export default async function Dashboard({ searchParams }: PageProps<"/">) {
               <DonutChart data={summary.byCategory} spent={summary.spent} currency={summary.currency} />
             </div>
             <div className="lg:col-span-3">
-              <CategoryBars data={summary.byCategory} currency={summary.currency} />
+              <CategoryBars data={summary.byCategory} budgets={db.budgets(month)} prev={prevByCategory} currency={summary.currency} />
             </div>
           </div>
         </section>
@@ -145,9 +112,15 @@ export default async function Dashboard({ searchParams }: PageProps<"/">) {
         </section>
 
         <section className="border-t border-zinc-200 pt-8 dark:border-zinc-800">
-          <h2 className="mb-4 text-sm font-medium">Transactions</h2>
-          <TransactionsTable transactions={transactions} currency={summary.currency} />
+          <h2 className="mb-4 text-sm font-medium">Recurring</h2>
+          <RecurringList data={db.recurring()} currency={summary.currency} />
         </section>
+
+        {ambiguous.length > 0 && (
+          <section className="border-t border-zinc-200 pt-8 dark:border-zinc-800">
+            <ReviewTeaser top={ambiguous[0]} count={ambiguous.length} currency={summary.currency} />
+          </section>
+        )}
       </main>
     </div>
   );
