@@ -1,3 +1,4 @@
+import { categoryColor } from "@/lib/colors";
 import { perMonth, type Recurring } from "@/lib/db";
 import { formatDay, formatMoney } from "@/lib/format";
 
@@ -11,7 +12,7 @@ export function RecurringList({ data, currency }: { data: Recurring[]; currency:
   const monthly = subs.reduce((acc, r) => acc + perMonth(r), 0);
   return (
     <div>
-      <ul className="divide-y divide-zinc-100 dark:divide-zinc-900">
+      <ul className="divide-y divide-zinc-100 dark:divide-zinc-800/60">
         {data.map((r) => (
           <li key={r.merchant} className="flex items-center justify-between gap-4 py-2.5 text-sm">
             <div className="min-w-0">
@@ -23,7 +24,8 @@ export function RecurringList({ data, currency }: { data: Recurring[]; currency:
                   </span>
                 )}
               </p>
-              <p className="text-xs text-zinc-500">
+              <p className="flex items-center gap-1.5 text-xs text-zinc-500">
+                <span aria-hidden className="size-2 shrink-0 rounded-full" style={{ background: categoryColor(r.category) }} />
                 {r.category} · {r.count}× · last {formatDay(r.lastDate)}
               </p>
             </div>

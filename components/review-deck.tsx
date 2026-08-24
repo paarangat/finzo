@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { CATEGORIES, type Category } from "@/lib/categories";
+import { categoryColor } from "@/lib/colors";
 import { formatDay, formatMoney } from "@/lib/format";
 
 export interface ReviewCard {
@@ -22,6 +23,7 @@ export function ReviewDeck({ deck, currency }: { deck: ReviewCard[]; currency: s
   const [dragging, setDragging] = useState(false);
   const [fly, setFly] = useState<0 | -1 | 1>(0);
   const [remember, setRemember] = useState(true);
+  const [tagged, setTagged] = useState(0);
   const card = fly ? deck[i - 1] : deck[i];
 
   const advance = useCallback((dir: -1 | 1) => {
@@ -41,6 +43,7 @@ export function ReviewDeck({ deck, currency }: { deck: ReviewCard[]; currency: s
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ category, remember }),
       });
+      setTagged((n) => n + 1);
       advance(dir);
     },
     [advance, remember]
@@ -67,7 +70,11 @@ export function ReviewDeck({ deck, currency }: { deck: ReviewCard[]; currency: s
       <div className="flex flex-1 flex-col items-center justify-center gap-3 text-center">
         <p className="text-lg font-medium">{deck.length === 0 ? "Nothing to review" : "All done"}</p>
         <p className="text-sm text-zinc-500">
-          {deck.length === 0 ? "Every transaction has a category." : `Reviewed ${deck.length} transactions.`}
+          {deck.length === 0
+            ? "Every transaction has a category."
+            : tagged === 0
+              ? "All skipped. They stay under Other for next time."
+              : `Categorized ${tagged} of ${deck.length}. The skipped ones stay under Other.`}
         </p>
         <Link href="/" className="mt-2 text-sm text-accent underline underline-offset-4">
           Back to dashboard
@@ -132,11 +139,13 @@ export function ReviewDeck({ deck, currency }: { deck: ReviewCard[]; currency: s
           </div>
           <div className="flex items-center justify-between text-sm">
             {card.suggestion ? (
-              <span className={verdict === "accept" ? "font-medium text-accent" : "text-zinc-500"}>
-                Suggested: <span className="text-foreground">{card.suggestion}</span>
+              <span className={`inline-flex items-center gap-1.5 ${verdict === "accept" ? "font-medium text-accent" : "text-zinc-500"}`}>
+                Suggested:
+                <span aria-hidden className="size-2 shrink-0 rounded-full" style={{ background: categoryColor(card.suggestion) }} />
+                <span className="text-foreground">{card.suggestion}</span>
               </span>
             ) : (
-              <span className="text-zinc-500">No guess — pick below</span>
+              <span className="text-zinc-500">No guess · pick below</span>
             )}
             <span className={verdict === "skip" ? "font-medium text-foreground" : "text-zinc-400 dark:text-zinc-600"}>
               {verdict === "skip" ? "Skip" : ""}
@@ -150,21 +159,28 @@ export function ReviewDeck({ deck, currency }: { deck: ReviewCard[]; currency: s
           <button
             key={c}
             onClick={() => !fly && tag(card.id, c, 1)}
-            className="min-h-11 rounded-full border border-zinc-200 px-4 text-xs text-zinc-600 transition-colors hover:border-accent hover:text-accent dark:border-zinc-800 dark:text-zinc-400"
+            className="inline-flex min-h-11 items-center gap-1.5 rounded-full border border-zinc-200 px-4 text-xs text-zinc-600 transition-colors hover:border-accent hover:text-accent dark:border-zinc-800 dark:text-zinc-400"
           >
+            <span aria-hidden className="size-2 shrink-0 rounded-full" style={{ background: categoryColor(c) }} />
             {c}
           </button>
         ))}
       </div>
 
       <label className="flex min-h-11 cursor-pointer items-center gap-2 text-xs text-zinc-500">
-        <input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} className="size-3.5 accent-emerald-700" />
+        <input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} className="size-3.5 accent-accent" />
         Remember my choice for this merchant (applies to past and future uploads)
       </label>
 
       <p className="text-xs text-zinc-500">
-        Swipe or <kbd className="rounded border border-zinc-200 px-1 font-mono dark:border-zinc-800">→</kbd> accept
-        {" · "}
+        {card.suggestion ? (
+          <>
+            Swipe or <kbd className="rounded border border-zinc-200 px-1 font-mono dark:border-zinc-800">→</kbd> accept
+            {" · "}
+          </>
+        ) : (
+          <>Pick a category, or </>
+        )}
         <kbd className="rounded border border-zinc-200 px-1 font-mono dark:border-zinc-800">←</kbd> skip
       </p>
     </div>

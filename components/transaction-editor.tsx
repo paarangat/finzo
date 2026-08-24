@@ -19,7 +19,7 @@ function Dialog({ open, onClose, title, children }: { open: boolean; onClose: ()
     <dialog
       ref={ref}
       onClose={onClose}
-      className="m-auto w-full max-w-sm rounded-2xl border border-zinc-200 bg-background p-6 text-foreground shadow-lg backdrop:bg-black/40 dark:border-zinc-800"
+      className="m-auto w-full max-w-sm rounded-2xl border border-zinc-200 bg-background p-6 text-foreground shadow-lg dark:border-zinc-800"
     >
       <h2 className="mb-4 text-sm font-medium">{title}</h2>
       {open && children}
@@ -38,16 +38,28 @@ export function TransactionDialog({
   txn,
   accounts,
   defaultAccount,
+  onDelete,
+  onSplit,
 }: {
   open: boolean;
   onClose: () => void;
   txn?: TransactionRow | null;
   accounts: Account[];
   defaultAccount?: number;
+  /** shows a Delete action in the footer (touch has no hover row actions) */
+  onDelete?: (txn: TransactionRow) => void;
+  /** shows a Split action in the footer */
+  onSplit?: (txn: TransactionRow) => void;
 }) {
   const router = useRouter();
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  // every close path (Cancel, Escape, save) routes through here so the confirm state never leaks into the next open
+  function close() {
+    setConfirmingDelete(false);
+    onClose();
+  }
 
   async function submit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -72,12 +84,12 @@ export function TransactionDialog({
       setError((await res.json()).error ?? "Save failed.");
       return;
     }
-    onClose();
+    close();
     router.refresh();
   }
 
   return (
-    <Dialog open={open} onClose={onClose} title={txn ? "Edit transaction" : "Add transaction"}>
+    <Dialog open={open} onClose={close} title={txn ? "Edit transaction" : "Add transaction"}>
       <form onSubmit={submit} className="space-y-3" key={txn?.id ?? "new"}>
         <label className={labelCls}>
           Date
@@ -131,17 +143,47 @@ export function TransactionDialog({
           </label>
         )}
         {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
-        <div className="flex justify-end gap-2 pt-2">
-          <button type="button" onClick={onClose} className="rounded-lg px-3 py-1.5 text-sm text-zinc-500 hover:text-foreground">
-            Cancel
-          </button>
-          <button
-            type="submit"
-            disabled={saving}
-            className="rounded-lg bg-emerald-700 px-3.5 py-1.5 text-sm font-medium text-white hover:bg-emerald-800 disabled:opacity-60"
-          >
-            {saving ? "Saving…" : txn ? "Save" : "Add"}
-          </button>
+        <div className="flex items-center gap-2 pt-2">
+          {txn && (onDelete || onSplit) && (
+            <span className="flex items-center gap-1 text-sm">
+              {onDelete &&
+                (confirmingDelete ? (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => onDelete(txn)}
+                      className="rounded-lg px-2 py-1.5 font-medium text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/40"
+                    >
+                      Delete
+                    </button>
+                    <button type="button" onClick={() => setConfirmingDelete(false)} className="rounded-lg px-2 py-1.5 text-zinc-500 hover:text-foreground">
+                      Keep
+                    </button>
+                  </>
+                ) : (
+                  <button type="button" onClick={() => setConfirmingDelete(true)} className="rounded-lg px-2 py-1.5 text-zinc-500 hover:text-red-600 dark:hover:text-red-400">
+                    Delete
+                  </button>
+                ))}
+              {onSplit && !confirmingDelete && (
+                <button type="button" onClick={() => onSplit(txn)} className="rounded-lg px-2 py-1.5 text-zinc-500 hover:text-foreground">
+                  Split
+                </button>
+              )}
+            </span>
+          )}
+          <span className="ml-auto flex gap-2">
+            <button type="button" onClick={close} className="rounded-lg px-3 py-1.5 text-sm text-zinc-500 hover:text-foreground">
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={saving}
+              className="rounded-lg bg-accent-solid px-3.5 py-1.5 text-sm font-medium text-accent-solid-fg hover:bg-accent-solid-hover disabled:opacity-60"
+            >
+              {saving ? "Saving…" : txn ? "Save" : "Add"}
+            </button>
+          </span>
         </div>
       </form>
     </Dialog>
@@ -234,7 +276,7 @@ function SplitForm({ txn, onClose, currency }: { txn: TransactionRow; onClose: (
             <button
               onClick={submit}
               disabled={saving || remainder !== 0}
-              className="rounded-lg bg-emerald-700 px-3.5 py-1.5 text-sm font-medium text-white hover:bg-emerald-800 disabled:opacity-60"
+              className="rounded-lg bg-accent-solid px-3.5 py-1.5 text-sm font-medium text-accent-solid-fg hover:bg-accent-solid-hover disabled:opacity-60"
             >
               {saving ? "Splitting…" : "Split"}
             </button>
@@ -250,7 +292,7 @@ export function AddTransactionButton({ accounts, defaultAccount }: { accounts: A
     <>
       <button
         onClick={() => setOpen(true)}
-        className="inline-flex min-h-11 items-center gap-1.5 rounded-lg border border-zinc-200 px-3 text-sm text-zinc-600 transition-colors hover:border-accent hover:text-accent dark:border-zinc-800 dark:text-zinc-400"
+        className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-zinc-200 px-3 text-sm text-zinc-600 transition-colors hover:border-accent hover:text-accent dark:border-zinc-800 dark:text-zinc-400"
       >
         <Plus size={14} weight="bold" /> Add transaction
       </button>
