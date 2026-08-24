@@ -18,7 +18,7 @@ export default async function Review() {
         reviewCount={deck.length}
         engine={engine}
         available={available}
-        showUpload={false}
+        showUpload
         accounts={db.accounts()}
         selectedAccount={db.selectedAccount()}
       />

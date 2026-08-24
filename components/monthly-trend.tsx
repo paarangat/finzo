@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { formatMoney } from "@/lib/format";
+import { formatMoney, formatMoneyCompact } from "@/lib/format";
 
 const MONTH_ABBR = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
@@ -22,12 +22,13 @@ export function MonthlyTrend({
           className="group flex h-full flex-1 flex-col items-center justify-end gap-1.5"
           aria-label={`${d.month}: ${formatMoney(d.total, currency)}`}
         >
-          <span className="font-mono text-xs tabular-nums text-zinc-500 opacity-0 transition-opacity group-hover:opacity-100">
-            {formatMoney(d.total, currency)}
+          {/* always visible: hover-only labels are dead on touch */}
+          <span className="hidden font-mono text-[11px] tabular-nums text-zinc-500 sm:block" title={formatMoney(d.total, currency)}>
+            {formatMoneyCompact(d.total, currency)}
           </span>
           <div
             className={`w-full max-w-14 rounded-t-[4px] bg-accent transition-opacity ${
-              d.month === current ? "" : "opacity-35 group-hover:opacity-60"
+              d.month === current ? "" : "opacity-35 group-hover:opacity-60 dark:opacity-50 dark:group-hover:opacity-70"
             }`}
             style={{ height: `${Math.max((d.total / max) * 100, 2)}%` }}
           />

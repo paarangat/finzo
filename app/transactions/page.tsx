@@ -46,7 +46,7 @@ export default async function Transactions({ searchParams }: PageProps<"/transac
             <AddTransactionButton accounts={accounts} defaultAccount={selected} />
             <a
               href="/api/export?format=csv"
-              className="inline-flex min-h-11 items-center gap-1.5 text-sm text-zinc-500 transition-colors hover:text-foreground"
+              className="inline-flex h-9 items-center gap-1.5 text-sm text-zinc-500 transition-colors hover:text-foreground"
               title="Download every transaction as CSV (JSON at /api/export?format=json)"
             >
               <DownloadSimple size={14} /> Export CSV

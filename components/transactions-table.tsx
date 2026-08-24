@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { PencilSimple, Scissors, TrashSimple } from "@phosphor-icons/react";
 import { CATEGORIES } from "@/lib/categories";
+import { categoryColor } from "@/lib/colors";
 import { formatDate, formatDay, formatMoney } from "@/lib/format";
 import { SplitDialog, TransactionDialog } from "@/components/transaction-editor";
 import type { Account, TransactionRow } from "@/lib/db";
@@ -46,10 +47,32 @@ export function TransactionsTable({
     "rounded-md p-1.5 text-zinc-400 transition-colors hover:bg-zinc-100 hover:text-foreground dark:hover:bg-zinc-800";
 
   return (
-    <div className="overflow-x-auto md:overflow-x-visible">
-      <table className="w-full text-sm">
-        {/* sticky only at md+: a sticky thead can't escape the overflow-x container mobile needs */}
-        <thead className="md:sticky md:top-0 md:z-10 md:bg-background">
+    <div>
+      {/* On phones the table's Amount column fell off-screen; a two-line list keeps money visible and row-tap opens the editor. */}
+      <ul className="divide-y divide-zinc-100 text-sm md:hidden dark:divide-zinc-800/60">
+        {transactions.map((t) => (
+          <li key={t.id}>
+            <button onClick={() => setEditing(t)} className="flex w-full items-center gap-3 py-2.5 text-left" aria-label={`Edit ${t.description}`}>
+              <span className="min-w-0 flex-1">
+                <span className="block truncate">{t.description}</span>
+                <span className="mt-0.5 flex items-center gap-1.5 text-xs text-zinc-500">
+                  <span className="font-mono">{showYear ? formatDate(t.date) : formatDay(t.date)}</span>
+                  <span aria-hidden>·</span>
+                  <span aria-hidden className="size-2 shrink-0 rounded-full" style={{ background: categoryColor(t.category) }} />
+                  {t.category}
+                  {showAccount && t.account && <span className="truncate">· {t.account}</span>}
+                </span>
+              </span>
+              <span className={`shrink-0 font-mono tabular-nums ${t.direction === "credit" ? "text-accent" : ""}`}>
+                {t.direction === "credit" ? "+" : ""}
+                {formatMoney(t.amount, currency)}
+              </span>
+            </button>
+          </li>
+        ))}
+      </ul>
+      <table className="w-full text-sm max-md:hidden">
+        <thead className="sticky top-0 z-10 bg-background">
           <tr className="text-left text-xs text-zinc-500">
             <th className="py-2 pr-4 font-medium">Date</th>
             <th className="py-2 pr-4 font-medium">Description</th>
@@ -70,18 +93,21 @@ export function TransactionsTable({
               </td>
               {showAccount && <td className="whitespace-nowrap py-2.5 pr-4 text-xs text-zinc-500">{t.account}</td>}
               <td className="py-2.5 pr-4">
-                <select
-                  value={t.category}
-                  onChange={(e) => recategorize(t.id, e.target.value)}
-                  className="rounded-md border border-transparent bg-transparent py-1 pr-6 text-sm text-zinc-600 transition-colors hover:border-zinc-200 dark:text-zinc-400 dark:hover:border-zinc-800"
-                  aria-label={`Category for ${t.description}`}
-                >
-                  {CATEGORIES.map((c) => (
-                    <option key={c} value={c}>
-                      {c}
-                    </option>
-                  ))}
-                </select>
+                <span className="inline-flex items-center gap-2">
+                  <span aria-hidden className="size-2 shrink-0 rounded-full" style={{ background: categoryColor(t.category) }} />
+                  <select
+                    value={t.category}
+                    onChange={(e) => recategorize(t.id, e.target.value)}
+                    className="rounded-md border border-transparent bg-transparent py-1 pr-6 text-sm text-zinc-600 transition-colors hover:border-zinc-200 dark:text-zinc-400 dark:hover:border-zinc-800"
+                    aria-label={`Category for ${t.description}`}
+                  >
+                    {CATEGORIES.map((c) => (
+                      <option key={c} value={c}>
+                        {c}
+                      </option>
+                    ))}
+                  </select>
+                </span>
               </td>
               <td
                 className={`whitespace-nowrap py-2.5 text-right font-mono tabular-nums ${
@@ -119,7 +145,20 @@ export function TransactionsTable({
           ))}
         </tbody>
       </table>
-      <TransactionDialog open={!!editing} onClose={() => setEditing(null)} txn={editing} accounts={accounts} />
+      <TransactionDialog
+        open={!!editing}
+        onClose={() => setEditing(null)}
+        txn={editing}
+        accounts={accounts}
+        onDelete={(t) => {
+          setEditing(null);
+          remove(t.id);
+        }}
+        onSplit={(t) => {
+          setEditing(null);
+          setSplitting(t);
+        }}
+      />
       <SplitDialog txn={splitting} onClose={() => setSplitting(null)} currency={currency} />
     </div>
   );

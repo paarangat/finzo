@@ -18,7 +18,7 @@ export function AccountSwitcher({ accounts, selected }: { accounts: Account[]; s
           });
           router.refresh();
         }}
-        className="rounded-lg border border-zinc-200 bg-transparent px-2 py-1.5 text-sm text-foreground dark:border-zinc-800"
+        className="h-9 rounded-lg border border-zinc-200 bg-transparent px-2 text-sm text-foreground dark:border-zinc-800"
       >
         <option value="all">All accounts</option>
         {accounts.map((a) => (
