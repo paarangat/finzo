@@ -20,6 +20,12 @@ export function BalanceSparkline({ data, currency }: { data: { date: string; amo
       role="img"
       aria-label="Balance over time"
     >
+      {/* area fill + endpoint dot so a near-flat history still reads as a chart, not a stray rule */}
+      <polygon
+        points={`0,${H} ${points.map((p) => `${p.x},${p.y}`).join(" ")} ${W},${H}`}
+        fill="currentColor"
+        opacity={0.08}
+      />
       <polyline
         points={points.map((p) => `${p.x},${p.y}`).join(" ")}
         fill="none"
@@ -29,6 +35,15 @@ export function BalanceSparkline({ data, currency }: { data: { date: string; amo
         strokeLinecap="round"
         vectorEffect="non-scaling-stroke"
       />
+      {/* dot as a zero-length round-capped stroke: a <circle> would stretch under preserveAspectRatio="none" */}
+      <path
+        d={`M ${points[points.length - 1].x},${points[points.length - 1].y} h 0.01`}
+        stroke="currentColor"
+        strokeWidth={5}
+        strokeLinecap="round"
+        vectorEffect="non-scaling-stroke"
+      />
+
       {points.map((p) => (
         // ponytail: invisible hit-slabs + native <title> instead of a tooltip component
         <rect key={p.date} x={p.x - step / 2} y={0} width={step} height={H} fill="transparent">

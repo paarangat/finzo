@@ -59,7 +59,7 @@ export function Uploader({
         <button
           onClick={() => inputRef.current?.click()}
           disabled={status.state === "uploading"}
-          className="inline-flex items-center gap-2 whitespace-nowrap rounded-lg bg-emerald-700 px-3.5 py-2 text-sm font-medium text-white transition active:scale-[0.98] hover:bg-emerald-800 disabled:opacity-60"
+          className="inline-flex h-9 items-center gap-2 whitespace-nowrap rounded-lg bg-accent-solid px-3.5 text-sm font-medium text-accent-solid-fg transition active:scale-[0.98] hover:bg-accent-solid-hover disabled:opacity-60"
         >
           <UploadSimple size={16} weight="bold" />
           {status.state === "uploading" ? "Reading statement…" : "Upload statement"}
@@ -101,7 +101,7 @@ export function Uploader({
           </div>
           <button
             onClick={() => inputRef.current?.click()}
-            className="rounded-lg bg-emerald-700 px-4 py-2 text-sm font-medium text-white transition active:scale-[0.98] hover:bg-emerald-800"
+            className="rounded-lg bg-accent-solid px-4 py-2 text-sm font-medium text-accent-solid-fg transition active:scale-[0.98] hover:bg-accent-solid-hover"
           >
             Choose file
           </button>

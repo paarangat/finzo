@@ -1,5 +1,18 @@
+/** Indian-style grouping (₹2,31,311.40) for INR; Western grouping otherwise. */
+const localeFor = (currency: string) => (currency === "INR" ? "en-IN" : "en");
+
 export function formatMoney(minor: number, currency: string): string {
-  return new Intl.NumberFormat("en", { style: "currency", currency }).format(minor / 100);
+  return new Intl.NumberFormat(localeFor(currency), { style: "currency", currency }).format(minor / 100);
+}
+
+/** "₹87K" — for chart labels that must stay short. */
+export function formatMoneyCompact(minor: number, currency: string): string {
+  return new Intl.NumberFormat(localeFor(currency), {
+    style: "currency",
+    currency,
+    notation: "compact",
+    maximumFractionDigits: 1,
+  }).format(minor / 100);
 }
 
 /** "2026-07" -> "July 2026" */

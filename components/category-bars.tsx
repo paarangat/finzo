@@ -54,7 +54,13 @@ export function CategoryBars({
       {rows.map(({ category, total }) => {
         const limit = limits.get(category);
         const ratio = limit ? total / limit : total / max;
-        const color = !limit ? categoryColor(category) : ratio >= 1 ? "#dc2626" : ratio >= 0.8 ? "#d97706" : categoryColor(category);
+        const color = !limit
+          ? categoryColor(category)
+          : ratio >= 1
+            ? "light-dark(#dc2626, #ef4444)"
+            : ratio >= 0.8
+              ? "light-dark(#d97706, #f59e0b)"
+              : categoryColor(category);
         return (
           <li key={category} className="grid grid-cols-[8rem_1fr_auto_3rem] items-center gap-3 text-sm">
             <span className="truncate text-zinc-600 dark:text-zinc-400">{category}</span>
@@ -110,7 +116,7 @@ export function CategoryBars({
             aria-label="Set a budget for a category"
             className="rounded-lg border border-dashed border-zinc-300 bg-transparent px-2 py-1.5 text-xs text-zinc-500 dark:border-zinc-700"
           >
-            <option value="">＋ Set a budget…</option>
+            <option value="">+ Set a budget…</option>
             {unbudgeted.map((c) => (
               <option key={c} value={c}>
                 {c}

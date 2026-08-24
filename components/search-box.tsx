@@ -31,7 +31,7 @@ export function SearchBox({ initial }: { initial: string }) {
         onChange={(e) => setValue(e.target.value)}
         placeholder="Search transactions"
         aria-label="Search transactions"
-        className="w-64 rounded-lg border border-zinc-200 bg-transparent py-1.5 pl-9 pr-3 text-sm outline-none placeholder:text-zinc-400 focus:border-zinc-400 dark:border-zinc-800 dark:focus:border-zinc-600"
+        className="h-9 w-64 rounded-lg border border-zinc-200 bg-transparent pl-9 pr-3 text-sm outline-none placeholder:text-zinc-400 focus:border-zinc-400 dark:border-zinc-800 dark:focus:border-zinc-600"
       />
     </label>
   );
