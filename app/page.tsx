@@ -1,6 +1,7 @@
+import Link from "next/link";
 import { getDb } from "@/lib/db";
 import { detectEngines, resolveEngine } from "@/lib/engines";
-import { formatMoney, formatMonth } from "@/lib/format";
+import { formatMoney, formatMoneyWhole, formatMonth } from "@/lib/format";
 import { Delta } from "@/components/delta";
 import { BalanceStat } from "@/components/balance-stat";
 import { BalanceSparkline } from "@/components/balance-sparkline";
@@ -8,8 +9,11 @@ import { CategoryBars } from "@/components/category-bars";
 import { DailyChart } from "@/components/daily-chart";
 import { DemoBanner, DemoButton } from "@/components/demo-controls";
 import { DonutChart } from "@/components/donut-chart";
-import { MonthlyTrend } from "@/components/monthly-trend";
+import { CashflowChart } from "@/components/cashflow-chart";
 import { RecurringList } from "@/components/recurring-list";
+import { RuleChecks } from "@/components/rule-checks";
+import { SalaryChip, SalarySetupCard } from "@/components/salary-control";
+import { ruleChecks } from "@/lib/rules";
 import { MonthNav } from "@/components/month-nav";
 import { ReviewTeaser } from "@/components/review-teaser";
 import { SiteHeader } from "@/components/site-header";
@@ -104,6 +108,8 @@ export default async function Dashboard({ searchParams }: PageProps<"/">) {
   const prev = prevMonth ? db.summary(prevMonth, selected) : null;
   const prevByCategory = Object.fromEntries(prev?.byCategory.map((c) => [c.category, c.total]) ?? []);
   const balance = db.balance(selected);
+  const cashflows = db.monthlyCashflow(selected);
+  const salary = db.salary();
   const ambiguous = db.ambiguous();
   // A combined sparkline over accounts with different statement dates would mislead — show it per-account or when there's just one.
   const showSparkline = selected !== undefined || accounts.length <= 1;
@@ -150,8 +156,8 @@ export default async function Dashboard({ searchParams }: PageProps<"/">) {
 
         <section className="grid gap-10 border-t border-zinc-200 pt-8 lg:grid-cols-2 dark:border-zinc-800">
           <div>
-            <h2 className="mb-4 text-sm font-medium">Monthly spending</h2>
-            <MonthlyTrend data={db.monthlySpend(selected)} current={month} currency={summary.currency} />
+            <h2 className="mb-4 text-sm font-medium">Cash flow</h2>
+            <CashflowChart data={cashflows} current={month} currency={summary.currency} />
           </div>
           <div>
             <h2 className="mb-4 text-sm font-medium">Daily spend</h2>
@@ -160,7 +166,35 @@ export default async function Dashboard({ searchParams }: PageProps<"/">) {
         </section>
 
         <section className="border-t border-zinc-200 pt-8 dark:border-zinc-800">
-          <h2 className="mb-4 text-sm font-medium">Recurring</h2>
+          <div className="mb-4 flex flex-wrap items-baseline justify-between gap-3">
+            <h2 className="text-sm font-medium">Rule-of-thumb check</h2>
+            {salary !== null && <SalaryChip salary={salary} currency={summary.currency} />}
+          </div>
+          {salary === null ? (
+            <SalarySetupCard currency={summary.currency} />
+          ) : (
+            <>
+              <RuleChecks
+                checks={ruleChecks(summary, balance?.amount ?? null, cashflows, new Date().toISOString().slice(0, 7), salary)}
+              />
+              <p className="mt-4 text-xs text-zinc-500">
+                Suggested limits from your salary — Needs{" "}
+                <span className="font-mono tabular-nums">{formatMoneyWhole(salary * 0.5, summary.currency)}</span> · Wants{" "}
+                <span className="font-mono tabular-nums">{formatMoneyWhole(salary * 0.3, summary.currency)}</span> · Save{" "}
+                <span className="font-mono tabular-nums">{formatMoneyWhole(salary * 0.2, summary.currency)}</span>. Rules of thumb, not
+                targets.
+              </p>
+            </>
+          )}
+        </section>
+
+        <section className="border-t border-zinc-200 pt-8 dark:border-zinc-800">
+          <div className="mb-4 flex items-baseline justify-between gap-4">
+            <h2 className="text-sm font-medium">Recurring</h2>
+            <Link href="/bills" className="text-xs text-zinc-500 transition-colors hover:text-foreground">
+              Bill calendar →
+            </Link>
+          </div>
           <RecurringList data={db.recurring(selected)} currency={summary.currency} />
         </section>
 

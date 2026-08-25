@@ -6,6 +6,10 @@ const Body = z.object({
   engine: z.enum(["claude", "codex", "fixture"]).optional(),
   manualBalance: z.number().optional(),
   account: z.union([z.literal("all"), z.number().int()]).optional(),
+  /** monthly take-home salary in major units; null clears it */
+  salary: z.number().positive().nullable().optional(),
+  /** display currency (ISO 4217); formats numbers, never converts them */
+  currency: z.string().regex(/^[A-Za-z]{3}$/).optional(),
 });
 
 export async function PUT(req: Request) {
@@ -17,5 +21,7 @@ export async function PUT(req: Request) {
   if (parsed.data.engine) db.setSetting("engine", parsed.data.engine);
   if (parsed.data.manualBalance !== undefined) db.setManualBalance(toMinor(parsed.data.manualBalance));
   if (parsed.data.account !== undefined) db.setSetting("account", String(parsed.data.account));
+  if (parsed.data.salary !== undefined) db.setSalary(parsed.data.salary === null ? null : toMinor(parsed.data.salary));
+  if (parsed.data.currency !== undefined) db.setSetting("currency", parsed.data.currency.toUpperCase());
   return NextResponse.json({ ok: true });
 }

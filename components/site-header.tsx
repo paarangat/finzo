@@ -9,6 +9,7 @@ import type { EngineId } from "@/lib/engines/types";
 const TABS = [
   { key: "overview", href: "/", label: "Overview" },
   { key: "transactions", href: "/transactions", label: "Transactions" },
+  { key: "bills", href: "/bills", label: "Bills" },
   { key: "review", href: "/review", label: "Review" },
 ] as const;
 

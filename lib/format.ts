@@ -5,6 +5,11 @@ export function formatMoney(minor: number, currency: string): string {
   return new Intl.NumberFormat(localeFor(currency), { style: "currency", currency }).format(minor / 100);
 }
 
+/** "₹45,000" — whole units, for targets and tight tiles where paise are noise. */
+export function formatMoneyWhole(minor: number, currency: string): string {
+  return new Intl.NumberFormat(localeFor(currency), { style: "currency", currency, maximumFractionDigits: 0 }).format(minor / 100);
+}
+
 /** "₹87K" — for chart labels that must stay short. */
 export function formatMoneyCompact(minor: number, currency: string): string {
   return new Intl.NumberFormat(localeFor(currency), {

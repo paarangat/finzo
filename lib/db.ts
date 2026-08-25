@@ -56,12 +56,20 @@ export interface ExportRow {
 
 export interface Recurring {
   merchant: string;
+  matcher: string; // normalized merchant key, used for overrides
   category: Category;
   cadence: "weekly" | "monthly" | "yearly";
   amount: number; // median, minor units
   lastDate: string;
   count: number;
   priceChanged: boolean;
+  manual: boolean; // forced by a user override rather than detected
+}
+
+export interface Cashflow {
+  month: string;
+  income: number; // minor units, all credits (matches the dashboard income stat)
+  spent: number; // minor units, debits excluding non-spend categories
 }
 
 export const toMinor = (n: number) => Math.round(n * 100);
@@ -78,6 +86,26 @@ const CADENCES: { name: Recurring["cadence"]; min: number; max: number; perMonth
   { name: "yearly", min: 350, max: 380, perMonth: 1 / 12 },
 ];
 export const perMonth = (r: Recurring) => r.amount * CADENCES.find((c) => c.name === r.cadence)!.perMonth;
+
+/** Projected charge dates for one recurring bill inside a calendar month ("YYYY-MM"). */
+export function dueDatesInMonth(r: Recurring, month: string): string[] {
+  const [y, m] = month.split("-").map(Number);
+  const daysInMonth = new Date(Date.UTC(y, m, 0)).getUTCDate();
+  const [, lm, ld] = r.lastDate.split("-").map(Number);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  if (r.cadence === "weekly") {
+    const monthEnd = Date.UTC(y, m - 1, daysInMonth);
+    const out: string[] = [];
+    for (let t = Date.parse(r.lastDate); t <= monthEnd; t += 7 * DAY) {
+      const d = new Date(t);
+      if (d.getUTCFullYear() === y && d.getUTCMonth() === m - 1) out.push(`${month}-${pad(d.getUTCDate())}`);
+    }
+    return out;
+  }
+  if (r.cadence === "yearly") return lm === m ? [`${month}-${pad(Math.min(ld, daysInMonth))}`] : [];
+  // monthly: same day each month, clamped to short months
+  return [`${month}-${pad(Math.min(ld, daysInMonth))}`];
+}
 
 const txnHash = (key: string) => createHash("sha256").update(key).digest("hex");
 
@@ -133,6 +161,11 @@ export function createDb(file: string) {
     );
     CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS budgets (category TEXT PRIMARY KEY, amount INTEGER NOT NULL);
+    CREATE TABLE IF NOT EXISTS recurring_overrides (
+      matcher TEXT PRIMARY KEY,
+      mode TEXT NOT NULL CHECK (mode IN ('exclude','include')),
+      cadence TEXT CHECK (cadence IN ('weekly','monthly','yearly'))
+    );
   `);
 
   // Migrate single-account databases: give existing rows a default account and
@@ -269,22 +302,27 @@ export function createDb(file: string) {
       });
     },
 
+    /** Display currency: the user's explicit choice, else the latest statement's. Formats only — amounts are never converted. */
     currency(): string {
+      const chosen = store.getSetting("currency");
+      if (chosen) return chosen;
       return (
         (db.prepare("SELECT currency FROM statements ORDER BY uploaded_at DESC, id DESC LIMIT 1").get() as { currency: string } | undefined)
           ?.currency ?? "USD"
       );
     },
 
-    monthlySpend(accountId?: number): { month: string; total: number }[] {
+    monthlyCashflow(accountId?: number): Cashflow[] {
       const nonSpend = NON_SPEND_CATEGORIES.map(() => "?").join(",");
       return db
         .prepare(
-          `SELECT substr(date,1,7) AS month, SUM(amount) AS total FROM transactions
-           WHERE direction = 'debit' AND category NOT IN (${nonSpend})${accFilter(accountId)}
+          `SELECT substr(date,1,7) AS month,
+                  SUM(CASE WHEN direction = 'credit' THEN amount ELSE 0 END) AS income,
+                  SUM(CASE WHEN direction = 'debit' AND category NOT IN (${nonSpend}) THEN amount ELSE 0 END) AS spent
+           FROM transactions WHERE 1=1${accFilter(accountId)}
            GROUP BY month ORDER BY month`
         )
-        .all(...NON_SPEND_CATEGORIES) as { month: string; total: number }[];
+        .all(...NON_SPEND_CATEGORIES) as Cashflow[];
     },
 
     months(accountId?: number): string[] {
@@ -358,29 +396,67 @@ export function createDb(file: string) {
         groups.set(k, [...(groups.get(k) ?? []), r]);
       }
       const latest = rows.length ? Date.parse(rows[rows.length - 1].date) : 0;
+      const overrides = new Map(
+        (db.prepare("SELECT matcher, mode, cadence FROM recurring_overrides").all() as {
+          matcher: string;
+          mode: "exclude" | "include";
+          cadence: Recurring["cadence"] | null;
+        }[]).map((o) => [o.matcher, o])
+      );
       const out: Recurring[] = [];
-      for (const g of groups.values()) {
-        if (g.length < 3) continue;
-        const gaps = g.slice(1).map((r, i) => (Date.parse(r.date) - Date.parse(g[i].date)) / DAY);
-        const gap = median(gaps);
-        const cadence = CADENCES.find((c) => gap >= c.min && gap <= c.max);
-        if (!cadence) continue;
-        // A charge last seen well past its cadence has lapsed — don't list it as active.
-        if (latest - Date.parse(g[g.length - 1].date) > cadence.max * 1.5 * DAY) continue;
+      for (const [matcher, g] of groups.entries()) {
+        const override = overrides.get(matcher);
+        if (override?.mode === "exclude") continue;
+        const forced = override?.mode === "include" ? override.cadence ?? "monthly" : null;
+        let cadence: Recurring["cadence"] | null = forced;
+        if (!forced) {
+          if (g.length < 3) continue;
+          const gaps = g.slice(1).map((r, i) => (Date.parse(r.date) - Date.parse(g[i].date)) / DAY);
+          const gap = median(gaps);
+          const detected = CADENCES.find((c) => gap >= c.min && gap <= c.max);
+          if (!detected) continue;
+          // A charge last seen well past its cadence has lapsed — don't list it as active.
+          if (latest - Date.parse(g[g.length - 1].date) > detected.max * 1.5 * DAY) continue;
+          cadence = detected.name;
+        }
         const amount = median(g.map((r) => r.amount));
-        if (g.some((r) => Math.abs(r.amount - amount) > amount * 0.2)) continue;
-        const [prev, last] = g.slice(-2);
+        if (!forced && g.some((r) => Math.abs(r.amount - amount) > amount * 0.2)) continue;
+        const [prev, last] = g.length >= 2 ? g.slice(-2) : [g[0], g[0]];
         out.push({
           merchant: last.description,
+          matcher,
           category: last.category,
-          cadence: cadence.name,
+          cadence: cadence!,
           amount,
           lastDate: last.date,
           count: g.length,
           priceChanged: Math.abs(last.amount - prev.amount) > prev.amount * 0.05,
+          manual: !!forced,
         });
       }
       return out.sort((a, b) => b.amount - a.amount);
+    },
+
+    /**
+     * User correction to detection: 'exclude' hides a merchant from bills,
+     * 'include' forces it in at the given cadence, null returns it to auto.
+     * For 'include', the merchant must have at least one debit to project from.
+     */
+    setRecurringOverride(matcher: string, mode: "exclude" | "include" | null, cadence?: Recurring["cadence"]): void {
+      if (mode === null) {
+        db.prepare("DELETE FROM recurring_overrides WHERE matcher = ?").run(matcher);
+        return;
+      }
+      db.prepare(
+        `INSERT INTO recurring_overrides (matcher, mode, cadence) VALUES (?, ?, ?)
+         ON CONFLICT(matcher) DO UPDATE SET mode = excluded.mode, cadence = excluded.cadence`
+      ).run(matcher, mode, cadence ?? null);
+    },
+
+    /** True when at least one debit matches this normalized merchant (needed to force-include it as a bill). */
+    hasMerchant(matcher: string): boolean {
+      const rows = db.prepare("SELECT DISTINCT description FROM transactions WHERE direction = 'debit'").all() as { description: string }[];
+      return rows.some((r) => normalizeDesc(r.description) === matcher);
     },
 
     /**
@@ -406,6 +482,14 @@ export function createDb(file: string) {
           .all(id) as { id: number; description: string }[];
         const update = db.prepare("UPDATE transactions SET category = ? WHERE id = ?");
         for (const o of others) if (normalizeDesc(o.description) === matcher) update.run(category, o.id);
+      })();
+    },
+
+    /** Recategorize many transactions at once (bulk action in the table). Rows are marked overridden, no rules saved. */
+    setCategoryBulk(ids: number[], category: Category): void {
+      const update = db.prepare("UPDATE transactions SET category = ?, category_overridden = 1 WHERE id = ?");
+      db.transaction(() => {
+        for (const id of ids) update.run(category, id);
       })();
     },
 
@@ -473,6 +557,17 @@ export function createDb(file: string) {
 
     setSetting(key: string, value: string): void {
       db.prepare("INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(key, value);
+    },
+
+    /** Monthly take-home salary in minor units; drives rule-of-thumb targets. */
+    salary(): number | null {
+      const v = Number(store.getSetting("salary"));
+      return Number.isFinite(v) && v > 0 ? v : null;
+    },
+
+    setSalary(amountMinor: number | null): void {
+      if (amountMinor === null) db.prepare("DELETE FROM settings WHERE key = 'salary'").run();
+      else store.setSetting("salary", String(amountMinor));
     },
 
     setManualBalance(amountMinor: number): void {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createDb, toMinor } from "../lib/db";
+import { createDb, dueDatesInMonth, normalizeDesc, toMinor, type Recurring } from "../lib/db";
 import { FIXTURE_EXTRACTION } from "../lib/engines/fixture";
 
 const insertFixture = (db: ReturnType<typeof createDb>, hash = "hash-1") =>
@@ -57,7 +57,7 @@ describe("store", () => {
     expect(s.byCategory.map((c) => c.category)).not.toContain("Transfers");
     expect(s.currency).toBe("USD");
     expect(s.byDay.reduce((acc, d) => acc + d.total, 0)).toBe(expectedSpent);
-    expect(db.monthlySpend()).toEqual([{ month: "2026-07", total: expectedSpent }]);
+    expect(db.monthlyCashflow()).toEqual([{ month: "2026-07", income: expectedIncome, spent: expectedSpent }]);
   });
 
   it("re-categorizing updates summary and marks the override", () => {
@@ -97,6 +97,15 @@ describe("store", () => {
     expect(deck[0].suggestion).toBeNull();
     db.setCategory(deck[1].id, "Shopping");
     expect(db.ambiguous().map((t) => t.description)).toEqual(["MYSTERY POS 77"]);
+  });
+
+  it("currency prefers the user's setting over the latest statement", () => {
+    const db = createDb(":memory:");
+    expect(db.currency()).toBe("USD");
+    insertFixture(db);
+    expect(db.currency()).toBe(FIXTURE_EXTRACTION.currency.toUpperCase());
+    db.setSetting("currency", "INR");
+    expect(db.currency()).toBe("INR");
   });
 
   it("balance prefers the statement until a newer manual entry exists", () => {
@@ -152,6 +161,52 @@ describe("store", () => {
     expect(netflix).toMatchObject({ cadence: "monthly", count: 4, lastDate: "2026-10-05", priceChanged: true, category: "Subscriptions" });
     expect(netflix.amount).toBe(toMinor(15.49));
     expect(rec[1]).toMatchObject({ cadence: "weekly", count: 3, priceChanged: false });
+  });
+
+  it("recurring overrides exclude detected bills and force-include undetected ones", () => {
+    const db = createDb(":memory:");
+    const extraction = structuredClone(FIXTURE_EXTRACTION);
+    const t = (date: string, description: string, amount: number) => ({ date, description, amount, direction: "debit" as const, category: "Subscriptions" as const });
+    extraction.transactions = [
+      ...extraction.transactions, // Netflix 15.49 on 2026-07-05
+      t("2026-08-05", "Netflix", 15.49),
+      t("2026-09-04", "Netflix", 15.49),
+      t("2026-08-01", "Gym", 40), // only 2 charges: not detected
+      t("2026-09-01", "Gym", 40),
+    ];
+    db.insertStatement(extraction, "multi.pdf", "hash-1");
+    expect(db.recurring().map((r) => r.merchant)).toEqual(["Netflix"]);
+    db.setRecurringOverride(normalizeDesc("Netflix"), "exclude");
+    expect(db.recurring()).toEqual([]);
+    db.setRecurringOverride(normalizeDesc("Gym"), "include", "monthly");
+    expect(db.recurring()).toMatchObject([{ merchant: "Gym", cadence: "monthly", amount: toMinor(40), manual: true, count: 2 }]);
+    db.setRecurringOverride(normalizeDesc("Netflix"), null); // back to auto
+    expect(db.recurring().map((r) => r.merchant).sort()).toEqual(["Gym", "Netflix"]);
+    expect(db.hasMerchant(normalizeDesc("Gym"))).toBe(true);
+    expect(db.hasMerchant(normalizeDesc("Nope Inc"))).toBe(false);
+  });
+
+  it("projects due dates into a calendar month per cadence", () => {
+    const bill = (cadence: Recurring["cadence"], lastDate: string): Recurring => ({
+      merchant: "X", matcher: "x", category: "Subscriptions", cadence, amount: 1000, lastDate, count: 3, priceChanged: false, manual: false,
+    });
+    expect(dueDatesInMonth(bill("monthly", "2026-08-05"), "2026-09")).toEqual(["2026-09-05"]);
+    expect(dueDatesInMonth(bill("monthly", "2026-08-31"), "2027-02")).toEqual(["2027-02-28"]); // clamped
+    expect(dueDatesInMonth(bill("weekly", "2026-08-20"), "2026-09")).toEqual(["2026-09-03", "2026-09-10", "2026-09-17", "2026-09-24"]);
+    expect(dueDatesInMonth(bill("weekly", "2026-09-02"), "2026-09")).toEqual(["2026-09-02", "2026-09-09", "2026-09-16", "2026-09-23", "2026-09-30"]);
+    expect(dueDatesInMonth(bill("yearly", "2025-09-12"), "2026-09")).toEqual(["2026-09-12"]);
+    expect(dueDatesInMonth(bill("yearly", "2025-10-12"), "2026-09")).toEqual([]);
+  });
+
+  it("bulk recategorize updates every id and marks overrides", () => {
+    const db = createDb(":memory:");
+    insertFixture(db);
+    const rows = db.searchTransactions("Whole Harvest");
+    db.setCategoryBulk(rows.map((r) => r.id), "Food & Dining");
+    for (const r of rows) {
+      expect(db.transaction(r.id)).toMatchObject({ category: "Food & Dining", category_overridden: 1 });
+    }
+    expect(db.rules().size).toBe(0);
   });
 
   it("budgets join monthly spend with limits and clear on null", () => {
