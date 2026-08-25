@@ -570,6 +570,17 @@ export function createDb(file: string) {
       else store.setSetting("salary", String(amountMinor));
     },
 
+    /** User's age in years; drives the 100-minus-age equity allocation suggestion. */
+    age(): number | null {
+      const v = Number(store.getSetting("age"));
+      return Number.isInteger(v) && v >= 10 && v <= 100 ? v : null;
+    },
+
+    setAge(years: number | null): void {
+      if (years === null) db.prepare("DELETE FROM settings WHERE key = 'age'").run();
+      else store.setSetting("age", String(years));
+    },
+
     setManualBalance(amountMinor: number): void {
       store.setSetting("manual_balance", String(amountMinor));
       store.setSetting("manual_balance_at", new Date().toISOString().slice(0, 10));

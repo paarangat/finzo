@@ -10,6 +10,8 @@ const Body = z.object({
   salary: z.number().positive().nullable().optional(),
   /** display currency (ISO 4217); formats numbers, never converts them */
   currency: z.string().regex(/^[A-Za-z]{3}$/).optional(),
+  /** age in years for the 100-minus-age equity split; null clears it */
+  age: z.number().int().min(10).max(100).nullable().optional(),
 });
 
 export async function PUT(req: Request) {
@@ -23,5 +25,6 @@ export async function PUT(req: Request) {
   if (parsed.data.account !== undefined) db.setSetting("account", String(parsed.data.account));
   if (parsed.data.salary !== undefined) db.setSalary(parsed.data.salary === null ? null : toMinor(parsed.data.salary));
   if (parsed.data.currency !== undefined) db.setSetting("currency", parsed.data.currency.toUpperCase());
+  if (parsed.data.age !== undefined) db.setAge(parsed.data.age);
   return NextResponse.json({ ok: true });
 }

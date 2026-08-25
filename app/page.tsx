@@ -110,6 +110,8 @@ export default async function Dashboard({ searchParams }: PageProps<"/">) {
   const balance = db.balance(selected);
   const cashflows = db.monthlyCashflow(selected);
   const salary = db.salary();
+  const age = db.age();
+  const equity = age === null ? null : Math.min(Math.max(100 - age, 0), 100);
   const ambiguous = db.ambiguous();
   // A combined sparkline over accounts with different statement dates would mislead — show it per-account or when there's just one.
   const showSparkline = selected !== undefined || accounts.length <= 1;
@@ -168,21 +170,43 @@ export default async function Dashboard({ searchParams }: PageProps<"/">) {
         <section className="border-t border-zinc-200 pt-8 dark:border-zinc-800">
           <div className="mb-4 flex flex-wrap items-baseline justify-between gap-3">
             <h2 className="text-sm font-medium">Rule-of-thumb check</h2>
-            {salary !== null && <SalaryChip salary={salary} currency={summary.currency} />}
+            {salary !== null && <SalaryChip salary={salary} currency={summary.currency} age={age} />}
           </div>
           {salary === null ? (
-            <SalarySetupCard currency={summary.currency} />
+            <SalarySetupCard currency={summary.currency} age={age} />
           ) : (
             <>
               <RuleChecks
                 checks={ruleChecks(summary, balance?.amount ?? null, cashflows, new Date().toISOString().slice(0, 7), salary)}
               />
+              {equity !== null && (
+                <div className="mt-3 flex flex-wrap items-center gap-x-6 gap-y-2 rounded-xl border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">
+                  <div className="w-44">
+                    <p className="text-xs text-zinc-500">Investing split</p>
+                    <p className="mt-0.5 text-[11px] text-zinc-400 dark:text-zinc-500">100 − age rule at {age}</p>
+                  </div>
+                  <div className="flex h-1.5 min-w-40 flex-1 gap-0.5">
+                    <div className="rounded-full bg-accent" style={{ width: `${equity}%` }} title={`Equity ${equity}%`} />
+                    <div className="rounded-full bg-zinc-300 dark:bg-zinc-600" style={{ width: `${100 - equity}%` }} title={`Debt ${100 - equity}%`} />
+                  </div>
+                  <p className="font-mono text-xs tabular-nums text-zinc-500">
+                    <span className="text-foreground">{equity}%</span> equity · {100 - equity}% debt
+                  </p>
+                  <p className="w-full text-[11px] text-zinc-400 dark:text-zinc-500">
+                    Of the {formatMoneyWhole(salary * 0.2, summary.currency)}/mo you aim to save, that is ~
+                    <span className="font-mono tabular-nums">{formatMoneyWhole(salary * 0.2 * (equity / 100), summary.currency)}</span> into
+                    equity and <span className="font-mono tabular-nums">{formatMoneyWhole(salary * 0.2 * (1 - equity / 100), summary.currency)}</span>{" "}
+                    into debt. At 12% returns, money doubles every ~6 years.
+                  </p>
+                </div>
+              )}
               <p className="mt-4 text-xs text-zinc-500">
                 Suggested limits from your salary — Needs{" "}
                 <span className="font-mono tabular-nums">{formatMoneyWhole(salary * 0.5, summary.currency)}</span> · Wants{" "}
                 <span className="font-mono tabular-nums">{formatMoneyWhole(salary * 0.3, summary.currency)}</span> · Save{" "}
-                <span className="font-mono tabular-nums">{formatMoneyWhole(salary * 0.2, summary.currency)}</span> · Investing: keep
-                about (100 − your age)% of it in equity, the rest in debt. Rules of thumb, not targets.
+                <span className="font-mono tabular-nums">{formatMoneyWhole(salary * 0.2, summary.currency)}</span>
+                {equity === null && <> · Investing: keep about (100 − your age)% of it in equity — add your age via Edit to personalise</>}
+                . Rules of thumb, not targets.
               </p>
             </>
           )}
