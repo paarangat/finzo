@@ -54,7 +54,7 @@ To start over, delete `data/`. To back up, copy it. To move machines, move it.
 
 ## Quickstart
 
-You need Node.js 20+ and at least one AI CLI signed in with your subscription:
+You need Node.js 22+ (`better-sqlite3` requires it) and at least one AI CLI signed in with your subscription:
 
 ```bash
 npm install -g @anthropic-ai/claude-code   # then: claude (sign in)

@@ -9,7 +9,7 @@
     "url": "git+https://github.com/paarangat/finzo.git"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=22"
   },
   "scripts": {
     "dev": "next dev",
