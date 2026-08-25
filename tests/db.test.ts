@@ -376,6 +376,22 @@ describe("demo data", () => {
   });
 });
 
+describe("investments", () => {
+  it("adds, updates value (touching the as-of date), and deletes", () => {
+    const db = createDb(":memory:");
+    const id = db.addInvestment({ name: "PPFAS Flexi Cap", kind: "mf_equity", value: toMinor(50_000), invested: toMinor(40_000) });
+    const fd = db.addInvestment({ name: "HDFC FD", kind: "fd", value: toMinor(100_000), invested: null });
+    expect(db.investments().map((r) => r.name)).toEqual(["HDFC FD", "PPFAS Flexi Cap"]); // value desc
+    db.updateInvestment(id, { value: toMinor(55_000) });
+    const row = db.investments().find((r) => r.id === id)!;
+    expect(row.value).toBe(toMinor(55_000));
+    expect(row.invested).toBe(toMinor(40_000));
+    expect(row.updated_at).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    db.deleteInvestment(fd);
+    expect(db.investments()).toHaveLength(1);
+  });
+});
+
 describe("export", () => {
   it("joins account and statement names onto every row", () => {
     const db = createDb(":memory:");

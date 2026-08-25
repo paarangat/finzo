@@ -1,3 +1,4 @@
+import { FIXTURE_CAS } from "../cas";
 import type { Extraction } from "../schema";
 import type { Engine } from "./types";
 
@@ -35,5 +36,9 @@ export const fixtureEngine: Engine = {
   label: "Fixture (demo)",
   async extract(): Promise<Extraction> {
     return structuredClone(FIXTURE_EXTRACTION);
+  },
+  // ponytail: the raw-prompt path only ever carries the CAS prompt today, so the fixture answers with a CAS.
+  async run(): Promise<string> {
+    return JSON.stringify(FIXTURE_CAS);
   },
 };

@@ -14,4 +14,6 @@ export interface Engine {
   label: string;
   /** Extract transactions from a statement file. `feedback` carries the previous attempt's error on retry. */
   extract(filePath: string, feedback?: string): Promise<Extraction>;
+  /** Run an arbitrary read-only prompt against files in workDir; returns the model's raw text reply. */
+  run(prompt: string, workDir: string): Promise<string>;
 }

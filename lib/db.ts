@@ -72,6 +72,17 @@ export interface Cashflow {
   spent: number; // minor units, debits excluding non-spend categories
 }
 
+export interface InvestmentRow {
+  id: number;
+  name: string;
+  kind: string; // one of INVESTMENT_KINDS in lib/investments.ts
+  value: number; // current value, minor units
+  invested: number | null; // optional cost basis, minor units
+  units: number | null; // units/shares held (CAS-extracted); enables NAV pricing
+  scheme_code: number | null; // AMFI scheme code; with units, value auto-refreshes from the NAV feed
+  updated_at: string; // "YYYY-MM-DD" the value was last touched
+}
+
 export const toMinor = (n: number) => Math.round(n * 100);
 
 const median = (xs: number[]) => {
@@ -166,6 +177,16 @@ export function createDb(file: string) {
       mode TEXT NOT NULL CHECK (mode IN ('exclude','include')),
       cadence TEXT CHECK (cadence IN ('weekly','monthly','yearly'))
     );
+    CREATE TABLE IF NOT EXISTS investments (
+      id INTEGER PRIMARY KEY,
+      name TEXT NOT NULL,
+      kind TEXT NOT NULL,
+      value INTEGER NOT NULL,
+      invested INTEGER,
+      units REAL,
+      scheme_code INTEGER,
+      updated_at TEXT NOT NULL DEFAULT (date('now'))
+    );
   `);
 
   // Migrate single-account databases: give existing rows a default account and
@@ -197,6 +218,11 @@ export function createDb(file: string) {
         ALTER TABLE transactions_new RENAME TO transactions;
       `);
     })();
+  }
+  // Early investments tables predate NAV auto-pricing.
+  const invCols = (db.pragma("table_info(investments)") as { name: string }[]).map((c) => c.name);
+  if (!invCols.includes("units")) {
+    db.exec("ALTER TABLE investments ADD COLUMN units REAL; ALTER TABLE investments ADD COLUMN scheme_code INTEGER;");
   }
   db.pragma("foreign_keys = ON"); // ON DELETE CASCADE needs this in SQLite; after migration so the rebuild can drop freely
 
@@ -661,6 +687,61 @@ export function createDb(file: string) {
         derived.push({ date: end, amount: anchor.amount - net });
       }
       return [...derived, ...points];
+    },
+
+    investments(): InvestmentRow[] {
+      return db.prepare("SELECT * FROM investments ORDER BY value DESC, id").all() as InvestmentRow[];
+    },
+
+    addInvestment(inv: {
+      name: string;
+      kind: string;
+      value: number;
+      invested: number | null;
+      units?: number | null;
+      scheme_code?: number | null;
+    }): number {
+      const res = db
+        .prepare("INSERT INTO investments (name, kind, value, invested, units, scheme_code) VALUES (?, ?, ?, ?, ?, ?)")
+        .run(inv.name, inv.kind, inv.value, inv.invested, inv.units ?? null, inv.scheme_code ?? null);
+      return Number(res.lastInsertRowid);
+    },
+
+    /** Any field patch touches updated_at — the row's "as of" date. */
+    updateInvestment(
+      id: number,
+      patch: Partial<{ name: string; kind: string; value: number; invested: number | null; units: number | null; scheme_code: number | null }>
+    ): void {
+      const sets: string[] = ["updated_at = date('now')"];
+      const vals: (string | number | null)[] = [];
+      for (const key of ["name", "kind", "value", "invested", "units", "scheme_code"] as const) {
+        if (patch[key] !== undefined) {
+          sets.push(`${key} = ?`);
+          vals.push(patch[key]);
+        }
+      }
+      db.prepare(`UPDATE investments SET ${sets.join(", ")} WHERE id = ?`).run(...vals, id);
+    },
+
+    /**
+     * CAS re-uploads refresh instead of duplicating: match an existing row by
+     * scheme code, else by normalized name; update it, or insert a new row.
+     */
+    upsertHolding(h: { name: string; kind: string; value: number; invested: number | null; units: number | null; scheme_code: number | null }): "inserted" | "updated" {
+      const rows = store.investments();
+      const match =
+        (h.scheme_code !== null && rows.find((r) => r.scheme_code === h.scheme_code)) ||
+        rows.find((r) => normalizeDesc(r.name) === normalizeDesc(h.name));
+      if (match) {
+        store.updateInvestment(match.id, h);
+        return "updated";
+      }
+      store.addInvestment(h);
+      return "inserted";
+    },
+
+    deleteInvestment(id: number): void {
+      db.prepare("DELETE FROM investments WHERE id = ?").run(id);
     },
 
     /** All demo statements share the 'demo-' file_hash prefix; clearing removes them and any account left empty. */
