@@ -1,0 +1,31 @@
+name: Feature request
+description: Suggest something Finzo should do
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Finzo stays small on purpose, and it stays local — anything that needs a server, an
+        account, or a bank connection is out of scope. Within that, ideas are welcome.
+
+        **Redact real amounts, merchant names, and account numbers** from any example you give.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What's the problem?
+      description: What are you trying to do today, and where does Finzo get in the way?
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: What would you like it to do?
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Anything you've tried, or other ways this could work

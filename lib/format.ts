@@ -38,6 +38,14 @@ export function formatDate(date: string): string {
   return new Date(Date.UTC(y, m - 1, d)).toLocaleDateString("en", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" });
 }
 
+/** Time-of-day greeting from the machine clock — this is a localhost app, so server time is the user's time. */
+export function greeting(d: Date): string {
+  const h = d.getHours();
+  if (h < 12) return "Good morning";
+  if (h < 17) return "Good afternoon";
+  return "Good evening";
+}
+
 /** Percent change from prev to current, rounded to whole percent. null when there is nothing to compare against. */
 export function delta(current: number, prev: number): number | null {
   if (!prev) return null;

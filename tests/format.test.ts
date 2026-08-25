@@ -1,5 +1,18 @@
 import { describe, expect, it } from "vitest";
-import { delta } from "../lib/format";
+import { delta, greeting } from "../lib/format";
+
+describe("greeting", () => {
+  // Local time on purpose — the dashboard renders on the same machine the user is sitting at.
+  const at = (h: number) => greeting(new Date(2026, 7, 25, h, 30));
+  it("covers the day in three bands", () => {
+    expect(at(0)).toBe("Good morning");
+    expect(at(11)).toBe("Good morning");
+    expect(at(12)).toBe("Good afternoon");
+    expect(at(16)).toBe("Good afternoon");
+    expect(at(17)).toBe("Good evening");
+    expect(at(23)).toBe("Good evening");
+  });
+});
 
 describe("delta", () => {
   it("hides when there is no previous value", () => {

@@ -1,0 +1,55 @@
+name: Bug report
+description: Something in Finzo doesn't work
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ### ⚠️ Redact your data first
+
+        Finzo issues attract screenshots and logs full of real money. Before you paste anything:
+        **remove amounts, merchant names, account numbers, and phone numbers.** Real UPI
+        descriptions contain other people's names. Never attach a real bank statement or CAS PDF —
+        reproduce with the **Fixture (demo)** engine or demo data instead.
+
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What you expected, and what you got instead.
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Load demo data
+        2. Go to /bills
+        3. ...
+    validations:
+      required: true
+
+  - type: dropdown
+    id: engine
+    attributes:
+      label: Engine
+      options: ["Claude Code", "Codex", "Fixture (demo)", "Not relevant"]
+    validations:
+      required: true
+
+  - type: input
+    id: versions
+    attributes:
+      label: Node version and OS
+      placeholder: Node 22.11 on macOS 15
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Terminal output or console errors
+      description: Redacted. This is rendered as a code block, no backticks needed.
+      render: shell

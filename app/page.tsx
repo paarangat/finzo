@@ -1,13 +1,15 @@
 import Link from "next/link";
 import { getDb } from "@/lib/db";
 import { detectEngines, resolveEngine } from "@/lib/engines";
-import { formatMoney, formatMoneyWhole, formatMonth } from "@/lib/format";
+import { formatMoney, formatMoneyWhole, formatMonth, greeting } from "@/lib/format";
 import { Delta } from "@/components/delta";
 import { BalanceStat } from "@/components/balance-stat";
 import { BalanceSparkline } from "@/components/balance-sparkline";
 import { CategoryBars } from "@/components/category-bars";
 import { DailyChart } from "@/components/daily-chart";
-import { DemoBanner, DemoButton } from "@/components/demo-controls";
+import { DemoBanner } from "@/components/demo-controls";
+import { Greeting } from "@/components/greeting";
+import { Onboarding } from "@/components/onboarding";
 import { DonutChart } from "@/components/donut-chart";
 import { PortfolioSummary } from "@/components/portfolio-summary";
 import { CashflowChart } from "@/components/cashflow-chart";
@@ -18,7 +20,6 @@ import { ruleChecks } from "@/lib/rules";
 import { MonthNav } from "@/components/month-nav";
 import { ReviewTeaser } from "@/components/review-teaser";
 import { SiteHeader } from "@/components/site-header";
-import { Uploader } from "@/components/uploader";
 
 export const dynamic = "force-dynamic";
 
@@ -33,46 +34,27 @@ export default async function Dashboard({ searchParams }: PageProps<"/">) {
   const noCli = !available.includes("claude") && !available.includes("codex");
   const isDemo = !!db.getSetting("demo");
 
+  const userName = db.getSetting("name");
+
   if (months.length === 0 && db.months().length === 0) {
-    const steps = [
-      { done: !noCli, text: "Install the Claude Code or Codex CLI and sign in with your subscription" },
-      { done: false, text: "Upload a bank statement (PDF or CSV)" },
-      { done: false, text: `${engine.label} extracts and categorizes every transaction — your dashboard builds itself` },
-    ];
+    // Progress is inferred from what got saved, so a reload resumes at the first
+    // unanswered step. Skipping saves nothing, so skipping everything and
+    // reloading starts over — cheaper than tracking a step that only matters once.
+    const saved = db.salary();
+    const initialStep = !userName ? 0 : saved === null ? 1 : 2;
     return (
       <div className="flex min-h-dvh flex-col">
         <SiteHeader active="overview" engine={engine} available={available} showUpload={false} />
-        <main className="flex flex-1 flex-col items-center justify-center gap-6 px-6 py-16">
-          <div className="max-w-lg text-center">
-            <h1 className="text-2xl font-semibold tracking-tight">Track your spending in minutes</h1>
-            <ol className="mx-auto mt-4 max-w-md space-y-2 text-left text-sm text-zinc-600 dark:text-zinc-400">
-              {steps.map((s, i) => (
-                <li key={i} className="flex items-start gap-2.5">
-                  <span
-                    className={`mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full font-mono text-[10px] ${
-                      s.done ? "bg-accent/15 text-accent" : "bg-zinc-100 text-zinc-500 dark:bg-zinc-800"
-                    }`}
-                  >
-                    {s.done ? "✓" : i + 1}
-                  </span>
-                  {s.text}
-                </li>
-              ))}
-            </ol>
-          </div>
-          <Uploader variant="dropzone" engineLabel={engine.label} />
-          <DemoButton />
-          {noCli && (
-            <div className="max-w-lg rounded-xl border border-zinc-200 p-4 text-sm text-zinc-600 dark:border-zinc-800 dark:text-zinc-400">
-              <p className="font-medium text-foreground">No AI engine found</p>
-              <p className="mt-1">
-                Finzo uses the Claude Code or Codex CLI on this machine. Install one and sign in with your subscription:
-              </p>
-              <pre className="mt-2 rounded-lg bg-zinc-100 p-3 font-mono text-xs dark:bg-zinc-900">
-                {"npm install -g @anthropic-ai/claude-code\nnpm install -g @openai/codex"}
-              </pre>
-            </div>
-          )}
+        <main className="flex flex-1 flex-col items-center justify-center px-6 py-16">
+          <Onboarding
+            initialStep={initialStep}
+            name={userName}
+            salary={saved}
+            currency={db.currency()}
+            age={db.age()}
+            engineLabel={engine.label}
+            noCli={noCli}
+          />
         </main>
       </div>
     );
@@ -122,6 +104,7 @@ export default async function Dashboard({ searchParams }: PageProps<"/">) {
       <main className="mx-auto w-full max-w-5xl flex-1 space-y-10 px-6 py-8">
         {isDemo && <DemoBanner />}
         <div className="flex flex-wrap items-center justify-between gap-4">
+          <Greeting greeting={greeting(new Date())} name={userName} />
           <MonthNav months={months} current={month} />
         </div>
 

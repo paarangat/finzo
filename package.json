@@ -2,6 +2,15 @@
   "name": "finzo",
   "version": "0.1.0",
   "private": true,
+  "description": "Local-first personal finance tracking, powered by the AI subscription you already have.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/paarangat/finzo.git"
+  },
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "dev": "next dev",
     "build": "next build",

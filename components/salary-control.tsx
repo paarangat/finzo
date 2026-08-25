@@ -15,18 +15,23 @@ async function saveSalary(value: number, currency: string, age: number | null) {
   });
 }
 
-function SalaryForm({
+export function SalaryForm({
   initial,
   currency: initialCurrency,
   initialAge,
   onDone,
   autoFocus,
+  submitLabel = "Set salary",
+  cancelLabel = "Cancel",
 }: {
   initial?: number;
   currency: string;
   initialAge?: number | null;
   onDone?: () => void;
   autoFocus?: boolean;
+  /** onboarding relabels these to "Next"/"Skip" */
+  submitLabel?: string;
+  cancelLabel?: string;
 }) {
   const router = useRouter();
   const [value, setValue] = useState(initial ? String(initial / 100) : "");
@@ -84,11 +89,11 @@ function SalaryForm({
         disabled={busy}
         className="h-9 rounded-lg bg-accent-solid px-3.5 text-sm font-medium text-accent-solid-fg transition-colors hover:bg-accent-solid-hover disabled:opacity-50"
       >
-        Set salary
+        {submitLabel}
       </button>
       {onDone && (
         <button type="button" onClick={onDone} className="text-xs text-zinc-500 transition-colors hover:text-foreground">
-          Cancel
+          {cancelLabel}
         </button>
       )}
     </form>
