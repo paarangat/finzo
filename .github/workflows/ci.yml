@@ -19,13 +19,9 @@ jobs:
         with:
           node-version: ${{ matrix.node }}
           cache: npm
-      - run: npm install --no-audit --no-fund
-      - name: Upload the lockfile this runner resolved
-        if: matrix.node == 22
-        uses: actions/upload-artifact@v4
-        with:
-          name: package-lock-linux
-          path: package-lock.json
+      # The lockfile must be resolved on Linux: a macOS-generated one omits the
+      # hoisted @emnapi/* that the wasm32-wasi fallbacks need, and npm ci rejects it.
+      - run: npm ci
       - run: npm run lint
       - run: npm test
       # No AI CLI and no data/ on the runner — the build must not need either.
