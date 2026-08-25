@@ -181,8 +181,8 @@ export default async function Dashboard({ searchParams }: PageProps<"/">) {
                 Suggested limits from your salary — Needs{" "}
                 <span className="font-mono tabular-nums">{formatMoneyWhole(salary * 0.5, summary.currency)}</span> · Wants{" "}
                 <span className="font-mono tabular-nums">{formatMoneyWhole(salary * 0.3, summary.currency)}</span> · Save{" "}
-                <span className="font-mono tabular-nums">{formatMoneyWhole(salary * 0.2, summary.currency)}</span>. Rules of thumb, not
-                targets.
+                <span className="font-mono tabular-nums">{formatMoneyWhole(salary * 0.2, summary.currency)}</span> · Investing: keep
+                about (100 − your age)% of it in equity, the rest in debt. Rules of thumb, not targets.
               </p>
             </>
           )}
