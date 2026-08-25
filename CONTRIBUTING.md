@@ -25,7 +25,7 @@ npm run lint
 npm run build
 ```
 
-All three run in CI on Node 20 and 22.
+All three run in CI on Node 22 and 24. Node 22 is the floor — `better-sqlite3` won't install below it.
 
 ## How the app is put together
 
