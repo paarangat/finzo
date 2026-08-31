@@ -1,4 +1,4 @@
-import { NEEDS_CATEGORIES } from "./categories";
+import { NEEDS_CATEGORIES, SPEND_CATEGORIES, WANTS_CATEGORIES, type Category } from "./categories";
 import { formatMoneyWhole } from "./format";
 import type { Cashflow, Summary } from "./db";
 
@@ -12,6 +12,8 @@ export interface RuleCheck {
   fill: number; // 0..1 of the meter
   tick: number; // 0..1 target marker position
   band?: [number, number]; // 0..1 target zone (emergency fund)
+  /** Debit categories the headline is summed over; drives the drill-down. Absent when no transactions back the number. */
+  categories?: Category[];
 }
 
 const pct = (share: number) => `${Math.round(share * 100)}%`;
@@ -44,7 +46,7 @@ export function ruleChecks(
     return { fill: Math.max(Math.min(share / max, 1), 0), tick: target / max };
   };
 
-  const spendRule = (label: string, amount: number, target: number, warnAt: number): RuleCheck => {
+  const spendRule = (label: string, amount: number, target: number, warnAt: number, categories: Category[]): RuleCheck => {
     const share = amount / salaryMinor;
     const status = share <= target ? "good" : share <= warnAt ? "warn" : "bad";
     const line = `${pct(target)} line`;
@@ -54,14 +56,15 @@ export function ruleChecks(
       sub: `${money(amount)} / ${money(salaryMinor * target)}`,
       status,
       statusLabel: status === "good" ? `On track · under ${pct(target)}` : status === "warn" ? `Close to the ${line}` : `Over the ${line}`,
+      categories,
       ...meter(share, target),
     };
   };
 
   const savedShare = saved / salaryMinor;
   const checks: RuleCheck[] = [
-    spendRule("Needs", needs, 0.5, 0.6),
-    spendRule("Wants", wants, 0.3, 0.4),
+    spendRule("Needs", needs, 0.5, 0.6, NEEDS_CATEGORIES),
+    spendRule("Wants", wants, 0.3, 0.4, WANTS_CATEGORIES),
     {
       label: "Savings",
       value: pct(savedShare),
@@ -69,9 +72,10 @@ export function ruleChecks(
       status: savedShare >= 0.2 ? "good" : savedShare >= 0.1 ? "warn" : "bad",
       statusLabel:
         saved < 0 ? "Spent more than salary" : savedShare >= 0.2 ? "On track · 20%+ saved" : "Below the 20% goal",
+      categories: SPEND_CATEGORIES, // salary minus all spending — the drill-down is where the rest went
       ...meter(Math.max(savedShare, 0), 0.2),
     },
-    spendRule("Rent", rent, 0.3, 0.35),
+    spendRule("Rent", rent, 0.3, 0.35, ["Rent & Housing"]),
   ];
 
   const past = cashflows.filter((c) => c.month < currentCalendarMonth && c.spent > 0).slice(-3);
