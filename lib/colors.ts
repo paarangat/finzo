@@ -13,7 +13,7 @@ const CATEGORY_COLORS: Partial<Record<Category, { light: string; dark: string }>
   "Bills & Utilities": { light: "#e34948", dark: "#e66767" },
 };
 
-// Long-tail categories (Transport, Travel, Fees, Other) share the neutral;
+// Long-tail categories (Transport, Travel, Fees, Family, Other) share the neutral;
 // they are always directly labeled, so identity never rides on hue alone.
 const NEUTRAL = { light: "#898781", dark: "#898781" };
 export const REMAINDER = "light-dark(#a1a1aa, #52525b)"; // the folded "everything else" slice

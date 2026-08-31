@@ -161,6 +161,8 @@ export default async function Dashboard({ searchParams }: PageProps<"/">) {
             <>
               <RuleChecks
                 checks={ruleChecks(summary, balance?.amount ?? null, cashflows, new Date().toISOString().slice(0, 7), salary)}
+                transactions={db.transactions(month, selected)}
+                currency={summary.currency}
               />
               <p className="mt-4 text-xs text-zinc-500">
                 Suggested limits from your salary — Needs{" "}

@@ -1,31 +1,14 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Plus } from "@phosphor-icons/react";
 import { CATEGORIES, type Category } from "@/lib/categories";
+import { Dialog } from "@/components/dialog";
 import { formatMoney } from "@/lib/format";
 import type { Account, TransactionRow } from "@/lib/db";
 
 const toMinor = (n: number) => Math.round(n * 100);
-
-function Dialog({ open, onClose, title, children }: { open: boolean; onClose: () => void; title: string; children: React.ReactNode }) {
-  const ref = useRef<HTMLDialogElement>(null);
-  useEffect(() => {
-    if (open) ref.current?.showModal();
-    else ref.current?.close();
-  }, [open]);
-  return (
-    <dialog
-      ref={ref}
-      onClose={onClose}
-      className="m-auto w-full max-w-sm rounded-2xl border border-zinc-200 bg-background p-6 text-foreground shadow-lg dark:border-zinc-800"
-    >
-      <h2 className="mb-4 text-sm font-medium">{title}</h2>
-      {open && children}
-    </dialog>
-  );
-}
 
 const inputCls =
   "w-full rounded-lg border border-zinc-300 bg-transparent px-2.5 py-1.5 text-sm outline-none focus:border-accent dark:border-zinc-700";

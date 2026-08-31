@@ -37,5 +37,10 @@
     "tailwindcss": "^4",
     "typescript": "^5",
     "vitest": "^4.1.11"
+  },
+  "allowScripts": {
+    "better-sqlite3@13.0.3": true,
+    "fsevents@2.3.3": true,
+    "unrs-resolver@1.12.2": true
   }
 }

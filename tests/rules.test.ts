@@ -71,3 +71,35 @@ describe("ruleChecks", () => {
     expect(ruleChecks(s, 250_000, [], "2026-08", null)).toEqual([]);
   });
 });
+
+describe("rule drill-down categories", () => {
+  // The dialog sums debits in check.categories. If that set drifts from the SQL
+  // behind byCategory, the dialog quietly disagrees with the card it opened from.
+  it("each check's category set sums to the amount the card reports", () => {
+    const byCategory: Summary["byCategory"] = [
+      { category: "Rent & Housing", total: 25_000 },
+      { category: "Groceries", total: 10_000 },
+      { category: "Family", total: 12_000 },
+      { category: "Shopping", total: 8_000 },
+      { category: "Travel", total: 5_000 },
+    ];
+    const s = summary(byCategory);
+    const checks = ruleChecks(s, 250_000, [], "2026-08", SALARY);
+    const sum = (c: (typeof checks)[number]) =>
+      byCategory.filter((b) => c.categories!.includes(b.category)).reduce((acc, b) => acc + b.total, 0);
+
+    const by = Object.fromEntries(checks.map((c) => [c.label, c]));
+    expect(sum(by.Needs)).toBe(35_000); // rent + groceries
+    expect(sum(by.Wants)).toBe(25_000); // family + shopping + travel — Family is a want
+    expect(sum(by.Rent)).toBe(25_000);
+    expect(sum(by.Savings)).toBe(s.spent); // savings = salary − everything below
+    expect(sum(by.Needs) + sum(by.Wants)).toBe(s.spent);
+    expect(by["Emergency fund"].categories).toBeUndefined(); // no transactions back it
+
+    // Non-spend never enters a drill-down, matching `category NOT IN (Transfers, Income)`.
+    for (const c of checks) {
+      expect(c.categories ?? []).not.toContain("Transfers");
+      expect(c.categories ?? []).not.toContain("Income");
+    }
+  });
+});

@@ -15,7 +15,7 @@ export interface ReviewCard {
 }
 
 const THRESHOLD = 90; // px of drag before a release commits the swipe
-const CHIP_CATEGORIES = CATEGORIES.filter((c) => c !== "Other" && c !== "Income");
+const CHIP_CATEGORIES = CATEGORIES.filter((c) => c !== "Income");
 
 export function ReviewDeck({ deck, currency }: { deck: ReviewCard[]; currency: string }) {
   const [i, setI] = useState(0);
