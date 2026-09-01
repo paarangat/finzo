@@ -83,6 +83,17 @@ export interface InvestmentRow {
   updated_at: string; // "YYYY-MM-DD" the value was last touched
 }
 
+export interface GoalRow {
+  id: number;
+  name: string;
+  target: number; // price, minor units
+  saved: number; // put aside so far, minor units
+  target_date: string | null; // "YYYY-MM-DD" you want it by; null means "whenever"
+  created_at: string;
+  analysis: string | null; // the engine's verdict, raw JSON; null until asked for
+  analysis_at: string | null; // "YYYY-MM-DD" it was asked for — the numbers move, the advice doesn't
+}
+
 export const toMinor = (n: number) => Math.round(n * 100);
 
 const median = (xs: number[]) => {
@@ -187,7 +198,23 @@ export function createDb(file: string) {
       scheme_code INTEGER,
       updated_at TEXT NOT NULL DEFAULT (date('now'))
     );
+    CREATE TABLE IF NOT EXISTS goals (
+      id INTEGER PRIMARY KEY,
+      name TEXT NOT NULL,
+      target INTEGER NOT NULL,
+      saved INTEGER NOT NULL DEFAULT 0,
+      target_date TEXT,
+      created_at TEXT NOT NULL DEFAULT (date('now')),
+      analysis TEXT,
+      analysis_at TEXT
+    );
   `);
+
+  // Goals predating the engine verdict: add the two columns it lands in.
+  const goalCols = (db.pragma("table_info(goals)") as { name: string }[]).map((c) => c.name);
+  if (!goalCols.includes("analysis")) {
+    db.exec("ALTER TABLE goals ADD COLUMN analysis TEXT; ALTER TABLE goals ADD COLUMN analysis_at TEXT");
+  }
 
   // Migrate single-account databases: give existing rows a default account and
   // rebuild transactions (statement_id/txn_hash become nullable for manual rows).
@@ -749,6 +776,54 @@ export function createDb(file: string) {
 
     deleteInvestment(id: number): void {
       db.prepare("DELETE FROM investments WHERE id = ?").run(id);
+    },
+
+    /** Dated goals first, soonest deadline at the top; undated ones after. */
+    goals(): GoalRow[] {
+      return db.prepare("SELECT * FROM goals ORDER BY target_date IS NULL, target_date, id").all() as GoalRow[];
+    },
+
+    addGoal(g: { name: string; target: number; saved?: number; target_date?: string | null }): number {
+      const res = db
+        .prepare("INSERT INTO goals (name, target, saved, target_date) VALUES (?, ?, ?, ?)")
+        .run(g.name, g.target, g.saved ?? 0, g.target_date ?? null);
+      return Number(res.lastInsertRowid);
+    },
+
+    updateGoal(id: number, patch: Partial<{ name: string; target: number; saved: number; target_date: string | null }>): void {
+      const sets: string[] = [];
+      const vals: (string | number | null)[] = [];
+      for (const key of ["name", "target", "saved", "target_date"] as const) {
+        if (patch[key] !== undefined) {
+          sets.push(`${key} = ?`);
+          vals.push(patch[key]);
+        }
+      }
+      if (sets.length === 0) return;
+      db.prepare(`UPDATE goals SET ${sets.join(", ")} WHERE id = ?`).run(...vals, id);
+    },
+
+    /** Stores the engine's raw JSON verdict; null clears it when the goal's numbers change under it. */
+    setGoalAnalysis(id: number, analysis: string | null): void {
+      db.prepare("UPDATE goals SET analysis = ?, analysis_at = ? WHERE id = ?").run(analysis, analysis === null ? null : new Date().toISOString().slice(0, 10), id);
+    },
+
+    /** Average monthly spend per category across the given completed months — what the engine reasons about. */
+    avgByCategory(months: string[]): { category: Category; avg: number }[] {
+      if (months.length === 0) return [];
+      const ph = months.map(() => "?").join(",");
+      const nonSpend = NON_SPEND_CATEGORIES.map(() => "?").join(",");
+      return db
+        .prepare(
+          `SELECT category, SUM(amount) / ? AS avg FROM transactions
+           WHERE substr(date,1,7) IN (${ph}) AND direction = 'debit' AND category NOT IN (${nonSpend})
+           GROUP BY category ORDER BY avg DESC`
+        )
+        .all(months.length, ...months, ...NON_SPEND_CATEGORIES) as { category: Category; avg: number }[];
+    },
+
+    deleteGoal(id: number): void {
+      db.prepare("DELETE FROM goals WHERE id = ?").run(id);
     },
 
     /** All demo statements share the 'demo-' file_hash prefix; clearing removes them and any account left empty. */

@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { getDb } from "@/lib/db";
 import { detectEngines, resolveEngine } from "@/lib/engines";
-import { formatMoney, formatMoneyWhole, formatMonth, greeting } from "@/lib/format";
+import { currentMonth, formatMoney, formatMoneyWhole, formatMonth, greeting } from "@/lib/format";
 import { Delta } from "@/components/delta";
 import { BalanceStat } from "@/components/balance-stat";
 import { BalanceSparkline } from "@/components/balance-sparkline";
@@ -15,8 +15,10 @@ import { PortfolioSummary } from "@/components/portfolio-summary";
 import { CashflowChart } from "@/components/cashflow-chart";
 import { RecurringList } from "@/components/recurring-list";
 import { RuleChecks } from "@/components/rule-checks";
+import { GoalSummary } from "@/components/goal-summary";
 import { SalaryChip, SalarySetupCard } from "@/components/salary-control";
 import { ruleChecks } from "@/lib/rules";
+import { planGoal } from "@/lib/goals";
 import { MonthNav } from "@/components/month-nav";
 import { ReviewTeaser } from "@/components/review-teaser";
 import { SiteHeader } from "@/components/site-header";
@@ -95,6 +97,22 @@ export default async function Dashboard({ searchParams }: PageProps<"/">) {
   const salary = db.salary();
   const age = db.age();
   const ambiguous = db.ambiguous();
+  const thisMonth = currentMonth();
+  // Goals are whole-picture: paid for out of every account, not the selected one.
+  const allBalance = selected === undefined ? balance : db.balance();
+  const allCashflows = selected === undefined ? cashflows : db.monthlyCashflow();
+  const goalPlans = db
+    .goals()
+    .slice(0, 3)
+    .map((goal) =>
+      planGoal(goal, {
+        balanceMinor: allBalance?.amount ?? null,
+        cashflows: allCashflows,
+        currentCalendarMonth: thisMonth,
+        salaryMinor: salary,
+        currency: summary.currency,
+      })
+    );
   // A combined sparkline over accounts with different statement dates would mislead — show it per-account or when there's just one.
   const showSparkline = selected !== undefined || accounts.length <= 1;
 
@@ -160,7 +178,7 @@ export default async function Dashboard({ searchParams }: PageProps<"/">) {
           ) : (
             <>
               <RuleChecks
-                checks={ruleChecks(summary, balance?.amount ?? null, cashflows, new Date().toISOString().slice(0, 7), salary)}
+                checks={ruleChecks(summary, balance?.amount ?? null, cashflows, thisMonth, salary)}
                 transactions={db.transactions(month, selected)}
                 currency={summary.currency}
               />
@@ -174,6 +192,18 @@ export default async function Dashboard({ searchParams }: PageProps<"/">) {
             </>
           )}
         </section>
+
+        {goalPlans.length > 0 && (
+          <section className="border-t border-zinc-200 pt-8 dark:border-zinc-800">
+            <div className="mb-4 flex items-baseline justify-between gap-4">
+              <h2 className="text-sm font-medium">Saving for</h2>
+              <Link href="/plan" className="text-xs text-zinc-500 transition-colors hover:text-foreground">
+                Plan →
+              </Link>
+            </div>
+            <GoalSummary plans={goalPlans} currency={summary.currency} />
+          </section>
+        )}
 
         <section className="border-t border-zinc-200 pt-8 dark:border-zinc-800">
           <div className="mb-4 flex items-baseline justify-between gap-4">

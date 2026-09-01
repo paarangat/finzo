@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { CATEGORIES } from "./categories";
+import { CATEGORIES, SPEND_CATEGORIES } from "./categories";
 
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "expected YYYY-MM-DD");
 
@@ -37,6 +37,37 @@ export function validateExtraction(data: unknown): Extraction {
   const result = ExtractionSchema.safeParse(data);
   if (!result.success) {
     throw new Error(`Extraction failed validation: ${result.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; ")}`);
+  }
+  return result.data;
+}
+
+/**
+ * The engine's read on one savings goal. Prose only — every number the user acts
+ * on is computed locally in `lib/goals.ts`; this validates what comes back so a
+ * rambling or malformed reply is dropped rather than shown as advice.
+ */
+export const GoalAdviceSchema = z.object({
+  verdict: z.enum(["yes", "stretch", "no"]),
+  headline: z.string().trim().min(1).max(200),
+  reasons: z.array(z.string().trim().min(1).max(300)).min(1).max(3),
+  cuts: z
+    .array(
+      z.object({
+        category: z.enum(SPEND_CATEGORIES as [string, ...string[]]),
+        monthly: z.number().nonnegative(), // major units
+        note: z.string().trim().min(1).max(200),
+      })
+    )
+    .max(3)
+    .default([]),
+});
+
+export type GoalAdvice = z.infer<typeof GoalAdviceSchema>;
+
+export function validateGoalAdvice(data: unknown): GoalAdvice {
+  const result = GoalAdviceSchema.safeParse(data);
+  if (!result.success) {
+    throw new Error(`Advice failed validation: ${result.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; ")}`);
   }
   return result.data;
 }

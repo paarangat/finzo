@@ -36,7 +36,7 @@ All three run in CI on Node 22 and 24. Node 22 is the floor — `better-sqlite3`
 - **There is no client state library and no data-fetching library** — no zustand, no context, no SWR. That's deliberate. `router.refresh()` is the invalidation story.
 - `components/auto-refresh.tsx` polls `/api/status` every 4 seconds for the database's mtime and refreshes when it changes, so a long-running upload lands in the UI on its own.
 
-**`lib/db.ts` is the whole data layer** (~780 lines). Schema is created inline with `CREATE TABLE IF NOT EXISTS`, followed by inline migrations. No ORM, no migration tool. Tables: `accounts`, `transactions`, `statements`, `rules`, `budgets`, `recurring_overrides`, `investments`, and a `settings` key/value table.
+**`lib/db.ts` is the whole data layer** (~780 lines). Schema is created inline with `CREATE TABLE IF NOT EXISTS`, followed by inline migrations. No ORM, no migration tool. Tables: `accounts`, `transactions`, `statements`, `rules`, `budgets`, `recurring_overrides`, `investments`, `goals`, and a `settings` key/value table.
 
 **Money is stored as integer minor units, always positive**, with a separate `direction` column (`debit` / `credit`). Never store a float, never store a negative. `toMinor()` converts at the boundary; `lib/format.ts` formats for display. Currency formats numbers — Finzo never converts between currencies.
 

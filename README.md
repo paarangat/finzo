@@ -18,6 +18,8 @@ No accounts, no sign-up, no server. A SQLite file on your disk.
 
 ![The bills calendar, with recurring charges placed on their projected due dates](docs/screenshots/bills.jpg)
 
+**Plan** — what you're saving for. Put in the price and when you want it ("₹20,000 electric guitar by March"), and Finzo works out what that costs per month, whether it fits what you actually save, and whether buying it outright today would leave you under a three-month cushion. Then the same AI CLI that reads your statements gives you the straight answer in plain English — *"It's a stretch — ₹3,334 a month out of ₹8,000 spare works, but only if you keep it up"* — with the two or three cuts that would close the gap, drawn from your real category spending. The arithmetic is always local; only the judgement call goes to the engine.
+
 **Invest** — import an Indian Consolidated Account Statement (CAMS / KFintech / NSDL) and Finzo matches each mutual fund to its AMFI scheme code and reprices your units from the free daily NAV feed.
 
 **Review** — a swipe deck for the transactions the engine wasn't sure about. Every choice you make becomes a rule, and past transactions from the same merchant get recategorized too.
@@ -37,7 +39,7 @@ No accounts, no sign-up, no server. A SQLite file on your disk.
 
 Finzo has no analytics, no telemetry, no error reporting, no accounts, and no auth. There are exactly three ways anything leaves this machine, and you should know all three:
 
-1. **The AI CLI you chose.** Your statement's contents are passed to `claude` or `codex`, which sends them to Anthropic or OpenAI under your own subscription and their terms. This is the real one — if a statement is too sensitive for that, don't upload it. The `fixture` engine and demo mode make no network calls at all.
+1. **The AI CLI you chose.** Your statement's contents are passed to `claude` or `codex`, which sends them to Anthropic or OpenAI under your own subscription and their terms. Asking a Plan goal "can I afford this?" sends a second, much smaller thing: monthly totals per category, your salary, balance, and detected recurring charges — aggregates and merchant names, never individual transactions. It only happens when you add a goal or press the button. This is the real one — if a statement is too sensitive for that, don't upload it. The `fixture` engine and demo mode make no network calls at all.
 2. **`api.mfapi.in`**, a free mirror of AMFI's daily NAV feed, used only on the Invest page and during CAS import. It receives **public mutual-fund scheme names** — never your units, values, holdings, or anything identifying. It has an 8-second timeout and fails silently; prices just go stale.
 3. **Google Fonts, at build time only.** `next/font/google` downloads Geist during `npm run build` and self-hosts it. The running app makes no font requests.
 
