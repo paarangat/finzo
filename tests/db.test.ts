@@ -23,6 +23,32 @@ describe("store", () => {
     expect(db.transactions("2026-07")).toHaveLength(FIXTURE_EXTRACTION.transactions.length);
   });
 
+  it("dedupes across statements that word the same transaction differently", () => {
+    // The real failure: a one-month statement and a full-year statement covering
+    // it both extracted fine, but the model cleaned each narration its own way
+    // ("NEFT to Vivek Varma - devices part 1" vs "Vivek Varma - devices (part 1)"),
+    // so every row imported twice. Dedup keys on date/amount/direction, never on
+    // the description, because the description is the one field the model rewrites.
+    const db = createDb(":memory:");
+    insertFixture(db, "hash-month");
+    const reworded = structuredClone(FIXTURE_EXTRACTION);
+    reworded.transactions = reworded.transactions.map((t, i) => ({ ...t, description: `NEFT to ${t.description} (ref ${i})` }));
+    const second = db.insertStatement(reworded, "full-year.pdf", "hash-year");
+    expect(second.inserted).toBe(0);
+    expect(second.skipped).toBe(FIXTURE_EXTRACTION.transactions.length);
+    expect(db.transactions("2026-07")).toHaveLength(FIXTURE_EXTRACTION.transactions.length);
+  });
+
+  it("still imports a row the narrower statement missed, even reworded", () => {
+    const db = createDb(":memory:");
+    insertFixture(db, "hash-month");
+    const wider = structuredClone(FIXTURE_EXTRACTION);
+    wider.transactions = wider.transactions.map((t) => ({ ...t, description: t.description.toUpperCase() }));
+    wider.transactions.push({ date: "2026-07-15", description: "ATM withdrawal", amount: 200, direction: "debit", category: "Other" });
+    const second = db.insertStatement(wider, "full-year.pdf", "hash-year");
+    expect(second.inserted).toBe(1); // only the genuinely new row
+  });
+
   it("keeps legitimate identical same-day transactions within one statement", () => {
     const db = createDb(":memory:");
     const extraction = structuredClone(FIXTURE_EXTRACTION);
