@@ -33,7 +33,7 @@ No accounts, no sign-up, no server. A SQLite file on your disk.
 - Finzo runs entirely on your machine: a Next.js app with a local SQLite database (`data/finzo.db`).
 - When you upload a statement, Finzo shells out to the `claude` or `codex` CLI in headless mode with a strict JSON extraction prompt. Your subscription pays for the tokens; no API keys needed.
 - The response is schema-validated (Zod) and written to SQLite atomically. Bad output never corrupts your data.
-- Duplicate files are rejected, and identical transactions across overlapping statements are deduplicated.
+- Duplicate files are rejected. A transaction you already have is matched on its date, amount and direction — never on its description, which the engine rewords differently on every extraction — so uploading a full-year statement over a monthly one doesn't double-count the overlap.
 
 ## Privacy — what leaves your machine
 
@@ -91,7 +91,7 @@ No subscription? Pick the **Fixture (demo)** engine in the top bar, or hit "expl
 ## Development
 
 ```bash
-npm test        # unit tests (schema, store, summary math, rules) — no AI needed
+npm test        # unit tests (schema, store, summary math, rules, goals) — no AI needed
 npm run lint
 npm run build
 ```
