@@ -279,12 +279,19 @@ export function createDb(file: string) {
         const statementId = Number(res.lastInsertRowid);
         const rules = store.rules();
         let inserted = 0;
-        // Legit same-day identical repeats (two identical orders) get an occurrence
-        // number, so dedup only bites across overlapping statement uploads.
+        // The description is deliberately NOT part of the key. It is model-cleaned
+        // prose, and two extractions of the same row word it differently ("NEFT to
+        // Vivek Varma - devices part 1" vs "Vivek Varma - devices (part 1)"), which
+        // let a wider statement silently re-import a month you already had. Date,
+        // amount and direction are what the bank actually fixes.
+        //
+        // Legit same-day identical repeats (two identical orders) still survive via
+        // the occurrence number: N identical rows in one statement get N distinct
+        // hashes, and an overlapping statement re-derives the same N.
         const seen = new Map<string, number>();
         for (const t of extraction.transactions) {
           const amount = toMinor(t.amount);
-          const key = `${account}|${t.date}|${t.description}|${amount}|${t.direction}`;
+          const key = `${account}|${t.date}|${amount}|${t.direction}`;
           const n = (seen.get(key) ?? 0) + 1;
           seen.set(key, n);
           const category = rules.get(normalizeDesc(t.description)) ?? t.category;
