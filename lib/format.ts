@@ -38,6 +38,18 @@ export function formatDate(date: string): string {
   return new Date(Date.UTC(y, m - 1, d)).toLocaleDateString("en", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" });
 }
 
+/**
+ * "YYYY-MM" for the machine's local clock. Finzo is a localhost app, so local
+ * time is the user's time — the same reason `greeting()` reads the machine
+ * clock. `toISOString()` would be UTC, and east of Greenwich that reports last
+ * month for the first hours of every 1st: a completed month you already have
+ * statements for gets treated as the unfinished current one and dropped from
+ * the spending average.
+ */
+export function currentMonth(d = new Date()): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+}
+
 /** Time-of-day greeting from the machine clock — this is a localhost app, so server time is the user's time. */
 export function greeting(d: Date): string {
   const h = d.getHours();

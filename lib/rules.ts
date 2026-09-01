@@ -19,6 +19,29 @@ export interface RuleCheck {
 const pct = (share: number) => `${Math.round(share * 100)}%`;
 
 /**
+ * Typical monthly spend: the last 3 *completed* months, and which months those
+ * were. The current month is excluded on purpose — on the 3rd it holds three
+ * days of spending and would make every cushion look years long.
+ *
+ * `months` is what stops the UI overclaiming: with one statement loaded this
+ * average is one month, one big one-off sets your "typical" spend, and saying
+ * "typically" would be a claim the data can't support. Empty when no completed
+ * month has spending, where `fallback` stands in.
+ */
+export function spendBaseline(
+  cashflows: Cashflow[],
+  currentCalendarMonth: string,
+  fallback: number
+): { avg: number; months: string[] } {
+  const past = cashflows.filter((c) => c.month < currentCalendarMonth && c.spent > 0).slice(-3);
+  return {
+    avg: past.length ? past.reduce((acc, c) => acc + c.spent, 0) / past.length : fallback,
+    months: past.map((c) => c.month),
+  };
+}
+
+
+/**
  * The classic rules (50/30/20, rent < 30%, 3–6 month emergency fund) measured
  * against a fixed monthly salary rather than one month's recorded credits, so
  * targets stay put. Returns [] when no salary is set — the UI shows setup.
@@ -78,8 +101,7 @@ export function ruleChecks(
     spendRule("Rent", rent, 0.3, 0.35, ["Rent & Housing"]),
   ];
 
-  const past = cashflows.filter((c) => c.month < currentCalendarMonth && c.spent > 0).slice(-3);
-  const avgSpend = past.length ? past.reduce((acc, c) => acc + c.spent, 0) / past.length : spent;
+  const avgSpend = spendBaseline(cashflows, currentCalendarMonth, spent).avg;
   if (balanceMinor !== null && balanceMinor > 0 && avgSpend > 0) {
     const months = balanceMinor / avgSpend;
     const max = Math.max(6, months);

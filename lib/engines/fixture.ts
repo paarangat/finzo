@@ -1,4 +1,5 @@
 import { FIXTURE_CAS } from "../cas";
+import { GOAL_PROMPT_MARKER } from "./prompt";
 import type { Extraction } from "../schema";
 import type { Engine } from "./types";
 
@@ -31,14 +32,26 @@ export const FIXTURE_EXTRACTION: Extraction = {
   ],
 };
 
+/** Canned goal verdict — the fixture engine never looks at the real numbers, so it says so. */
+const FIXTURE_GOAL_ADVICE = {
+  verdict: "stretch",
+  headline: "This is the demo engine — it can't see your numbers, so treat this as a sample.",
+  reasons: [
+    "Pick Claude Code or Codex in the top bar to get a verdict based on your actual spending.",
+    "The monthly amount and the cushion check above are real — those are worked out on this machine either way.",
+  ],
+  cuts: [],
+};
+
 export const fixtureEngine: Engine = {
   id: "fixture",
   label: "Fixture (demo)",
   async extract(): Promise<Extraction> {
     return structuredClone(FIXTURE_EXTRACTION);
   },
-  // ponytail: the raw-prompt path only ever carries the CAS prompt today, so the fixture answers with a CAS.
-  async run(): Promise<string> {
-    return JSON.stringify(FIXTURE_CAS);
+  async run(prompt: string): Promise<string> {
+    // Two questions reach an engine's run(): a goal verdict and CAS parsing.
+    // The fixture answers both from canned data so the app works with no CLI.
+    return JSON.stringify(prompt.includes(GOAL_PROMPT_MARKER) ? FIXTURE_GOAL_ADVICE : FIXTURE_CAS);
   },
 };
