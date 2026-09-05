@@ -71,3 +71,24 @@ export function validateGoalAdvice(data: unknown): GoalAdvice {
   }
   return result.data;
 }
+
+/**
+ * The engine's read on handing a chore off. Same contract as goal advice: the
+ * rate, the cost per hour and the monthly bite are all computed in
+ * `lib/outsource.ts`; this only keeps a well-formed verdict and drops the rest.
+ */
+export const OutsourceAdviceSchema = z.object({
+  verdict: z.enum(["yes", "depends", "no"]),
+  headline: z.string().trim().min(1).max(200),
+  reasons: z.array(z.string().trim().min(1).max(300)).min(1).max(3),
+});
+
+export type OutsourceAdvice = z.infer<typeof OutsourceAdviceSchema>;
+
+export function validateOutsourceAdvice(data: unknown): OutsourceAdvice {
+  const result = OutsourceAdviceSchema.safeParse(data);
+  if (!result.success) {
+    throw new Error(`Advice failed validation: ${result.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; ")}`);
+  }
+  return result.data;
+}

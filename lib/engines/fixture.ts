@@ -1,5 +1,5 @@
 import { FIXTURE_CAS } from "../cas";
-import { GOAL_PROMPT_MARKER } from "./prompt";
+import { GOAL_PROMPT_MARKER, OUTSOURCE_PROMPT_MARKER } from "./prompt";
 import type { Extraction } from "../schema";
 import type { Engine } from "./types";
 
@@ -43,6 +43,16 @@ const FIXTURE_GOAL_ADVICE = {
   cuts: [],
 };
 
+/** Canned outsourcing verdict — same honesty as the goal one: the demo engine never saw the numbers. */
+const FIXTURE_OUTSOURCE_ADVICE = {
+  verdict: "depends",
+  headline: "This is the demo engine — it can't see your numbers, so treat this as a sample.",
+  reasons: [
+    "Pick Claude Code or Codex in the top bar to get a verdict based on what your hour is actually worth.",
+    "The cost per hour and the monthly bite above are real — those are worked out on this machine either way.",
+  ],
+};
+
 export const fixtureEngine: Engine = {
   id: "fixture",
   label: "Fixture (demo)",
@@ -50,8 +60,11 @@ export const fixtureEngine: Engine = {
     return structuredClone(FIXTURE_EXTRACTION);
   },
   async run(prompt: string): Promise<string> {
-    // Two questions reach an engine's run(): a goal verdict and CAS parsing.
-    // The fixture answers both from canned data so the app works with no CLI.
-    return JSON.stringify(prompt.includes(GOAL_PROMPT_MARKER) ? FIXTURE_GOAL_ADVICE : FIXTURE_CAS);
+    // Three questions reach an engine's run(): a goal verdict, an outsourcing
+    // verdict, and CAS parsing. The fixture answers all from canned data so the
+    // app works with no CLI.
+    if (prompt.includes(GOAL_PROMPT_MARKER)) return JSON.stringify(FIXTURE_GOAL_ADVICE);
+    if (prompt.includes(OUTSOURCE_PROMPT_MARKER)) return JSON.stringify(FIXTURE_OUTSOURCE_ADVICE);
+    return JSON.stringify(FIXTURE_CAS);
   },
 };

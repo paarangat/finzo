@@ -14,6 +14,8 @@ const Body = z.object({
   age: z.number().int().min(10).max(100).nullable().optional(),
   /** what to call you in the dashboard greeting; stays on this machine */
   name: z.string().trim().min(1).max(60).optional(),
+  /** hours worked a week, for what an hour of your time is worth; null goes back to assuming 40 */
+  workHours: z.number().positive().max(100).nullable().optional(),
 });
 
 export async function PUT(req: Request) {
@@ -29,5 +31,6 @@ export async function PUT(req: Request) {
   if (parsed.data.currency !== undefined) db.setSetting("currency", parsed.data.currency.toUpperCase());
   if (parsed.data.age !== undefined) db.setAge(parsed.data.age);
   if (parsed.data.name) db.setSetting("name", parsed.data.name);
+  if (parsed.data.workHours !== undefined) db.setWorkHours(parsed.data.workHours);
   return NextResponse.json({ ok: true });
 }
