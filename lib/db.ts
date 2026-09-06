@@ -94,6 +94,17 @@ export interface GoalRow {
   analysis_at: string | null; // "YYYY-MM-DD" it was asked for — the numbers move, the advice doesn't
 }
 
+export interface OutsourceRow {
+  id: number;
+  name: string; // the chore: "house cleaning", "tax filing"
+  cost: number; // what it costs each time, minor units
+  hours: number; // hours it frees each time
+  cadence: "once" | "weekly" | "monthly";
+  created_at: string;
+  analysis: string | null; // the engine's verdict, raw JSON; null until asked for
+  analysis_at: string | null;
+}
+
 export const toMinor = (n: number) => Math.round(n * 100);
 
 const median = (xs: number[]) => {
@@ -204,6 +215,16 @@ export function createDb(file: string) {
       target INTEGER NOT NULL,
       saved INTEGER NOT NULL DEFAULT 0,
       target_date TEXT,
+      created_at TEXT NOT NULL DEFAULT (date('now')),
+      analysis TEXT,
+      analysis_at TEXT
+    );
+    CREATE TABLE IF NOT EXISTS outsource (
+      id INTEGER PRIMARY KEY,
+      name TEXT NOT NULL,
+      cost INTEGER NOT NULL,
+      hours REAL NOT NULL,
+      cadence TEXT NOT NULL CHECK (cadence IN ('once','weekly','monthly')),
       created_at TEXT NOT NULL DEFAULT (date('now')),
       analysis TEXT,
       analysis_at TEXT
@@ -641,6 +662,17 @@ export function createDb(file: string) {
       else store.setSetting("age", String(years));
     },
 
+    /** Hours worked a week; the salary divided by these is what an hour is worth. null until set — callers assume a 40-hour week. */
+    workHours(): number | null {
+      const v = Number(store.getSetting("work_hours"));
+      return Number.isFinite(v) && v > 0 && v <= 100 ? v : null;
+    },
+
+    setWorkHours(hours: number | null): void {
+      if (hours === null) db.prepare("DELETE FROM settings WHERE key = 'work_hours'").run();
+      else store.setSetting("work_hours", String(hours));
+    },
+
     setManualBalance(amountMinor: number): void {
       store.setSetting("manual_balance", String(amountMinor));
       store.setSetting("manual_balance_at", new Date().toISOString().slice(0, 10));
@@ -824,6 +856,25 @@ export function createDb(file: string) {
 
     deleteGoal(id: number): void {
       db.prepare("DELETE FROM goals WHERE id = ?").run(id);
+    },
+
+    /** Chores you've asked about handing off, newest first. */
+    outsource(): OutsourceRow[] {
+      return db.prepare("SELECT * FROM outsource ORDER BY id DESC").all() as OutsourceRow[];
+    },
+
+    addOutsource(t: { name: string; cost: number; hours: number; cadence: OutsourceRow["cadence"] }): number {
+      const res = db.prepare("INSERT INTO outsource (name, cost, hours, cadence) VALUES (?, ?, ?, ?)").run(t.name, t.cost, t.hours, t.cadence);
+      return Number(res.lastInsertRowid);
+    },
+
+    /** Stores the engine's raw JSON verdict on one chore; null clears it. */
+    setOutsourceAnalysis(id: number, analysis: string | null): void {
+      db.prepare("UPDATE outsource SET analysis = ?, analysis_at = ? WHERE id = ?").run(analysis, analysis === null ? null : new Date().toISOString().slice(0, 10), id);
+    },
+
+    deleteOutsource(id: number): void {
+      db.prepare("DELETE FROM outsource WHERE id = ?").run(id);
     },
 
     /** All demo statements share the 'demo-' file_hash prefix; clearing removes them and any account left empty. */

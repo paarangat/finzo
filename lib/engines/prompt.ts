@@ -70,3 +70,40 @@ Rules:
 - If \`typical_monthly_spend_is_averaged_over_these_months\` holds one month or is empty, that spending figure is a single month, not a habit — say so in one of the reasons, and note that a big one-off in that month would be skewing it.
 - Be honest. If the answer is no, say no — do not soften it into a maybe.`;
 }
+
+/** Lets the fixture engine tell an outsourcing question from the other prompts. */
+export const OUTSOURCE_PROMPT_MARKER = "FINZO_OUTSOURCE_ADVICE";
+
+/**
+ * Asks the engine one question: should they pay someone to do this, given what
+ * their hour is worth and what they have left over? The rate, the cost per hour
+ * and the monthly bite are all handed over computed — the model phrases the call.
+ */
+export function buildOutsourcePrompt(facts: unknown): string {
+  return `${OUTSOURCE_PROMPT_MARKER}
+
+Someone is deciding whether to pay someone else to do a chore so they get the time back. Here are their real numbers, worked out from their own salary and bank statements — use them as given, do not recalculate anything:
+
+${JSON.stringify(facts, null, 2)}
+
+Respond with ONLY a JSON object, no prose, no code fences, matching exactly this shape:
+{
+  "verdict": "yes" | "depends" | "no",
+  "headline": string,        // ONE sentence, under 100 characters, addressed to them as "you", that states the decision
+  "reasons": [string]        // 1-3 short sentences explaining it with their actual numbers
+}
+
+What each verdict means:
+- "yes": each hour bought back costs clearly less than an hour of their work earns, and the monthly cost sits easily inside what they have left over.
+- "depends": the numbers are close, or it only pays off if they actually use the freed hours — for paid work, or for rest they genuinely need.
+- "no": the hour costs more than it earns them, or the cost would eat most of what they have left over each month.
+
+Rules:
+- Lead with the decision. "Yes — ..." / "Depends — ..." / "No — ...". No preamble, no hedging, no financial-advice disclaimers.
+- Plain English a teenager would follow. No jargon, no "opportunity cost", no "consider allocating".
+- Quote their real amounts in \`currency\` and \`take_home_per_hour\` against \`cost_per_hour_freed\` — that comparison is the heart of the answer.
+- Time back is worth something even when it goes to rest, not more work. Say what the rest costs them per hour rather than pretending it's free or worthless.
+- If \`take_home_per_hour\` is null, they have not set a salary — say the answer depends on that and keep it short.
+- If \`typical_monthly_spend_is_averaged_over_these_months\` holds one month or is empty, that spending figure is a single month, not a habit — say so in one of the reasons.
+- Be honest. If the answer is no, say no — do not soften it into a maybe.`;
+}
