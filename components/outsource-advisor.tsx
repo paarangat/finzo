@@ -245,7 +245,7 @@ export function OutsourceAdvisor({ plans, currency, engineLabel }: { plans: Outs
           <input
             value={form.name}
             onChange={(e) => setForm({ ...form, name: e.target.value })}
-            placeholder="What would you hand off — e.g. house cleaning"
+            placeholder="What to hand off — e.g. cleaning"
             required
             className={`${inputCls} w-72`}
           />
